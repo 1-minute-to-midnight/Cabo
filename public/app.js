@@ -9,6 +9,7 @@ const els = {
   createBtn: document.querySelector("#createBtn"),
   joinBtn: document.querySelector("#joinBtn"),
   copyBtn: document.querySelector("#copyBtn"),
+  addBotBtn: document.querySelector("#addBotBtn"),
   startBtn: document.querySelector("#startBtn"),
   leaveBtn: document.querySelector("#leaveBtn"),
   notice: document.querySelector("#notice"),
@@ -132,6 +133,7 @@ function render() {
   els.discardTop.textContent = state.discardTop?.label || "--";
   els.drawnCard.innerHTML = state.drawnCard ? cardHtml(state.drawnCard) : "";
 
+  els.addBotBtn.disabled = !state.canAddBot;
   els.startBtn.disabled = !state.canStart;
   els.deckBtn.disabled = !canAct() || state.turnPhase !== "draw";
   els.discardBtn.disabled = !canAct() || state.turnPhase !== "draw" || !state.discardTop;
@@ -165,11 +167,12 @@ function render() {
       `;
     }).join("");
     const score = player.score === null ? "" : `<span class="badge">${player.score}</span>`;
+    const botBadge = player.isBot ? '<span class="badge">AI</span>' : "";
     return `
       <article class="player ${isCurrent ? "current" : ""} ${isWinner ? "winner" : ""}">
         <div class="player-head">
           <strong>${escapeHtml(player.name)}${player.id === state.you ? " (you)" : ""}</strong>
-          <span class="badges">${player.isHost ? '<span class="badge">Host</span>' : ""}${score}</span>
+          <span class="badges">${player.isHost ? '<span class="badge">Host</span>' : ""}${botBadge}${score}</span>
         </div>
         <div class="hand">${hand}</div>
       </article>
@@ -255,6 +258,7 @@ function escapeHtml(value) {
 
 els.createBtn.addEventListener("click", createRoom);
 els.joinBtn.addEventListener("click", joinRoom);
+els.addBotBtn.addEventListener("click", () => request("addBot", { roomCode: state.roomCode, playerId: state.you }));
 els.startBtn.addEventListener("click", () => request("startGame", { roomCode: state.roomCode, playerId: state.you }));
 els.deckBtn.addEventListener("click", () => request("draw", { roomCode: state.roomCode, playerId: state.you, source: "deck" }));
 els.discardBtn.addEventListener("click", () => request("draw", { roomCode: state.roomCode, playerId: state.you, source: "discard" }));

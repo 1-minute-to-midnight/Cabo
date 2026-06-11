@@ -12,6 +12,8 @@ const POWER_LABELS = {
   otherPeek: "Peek at one opponent card",
   swap: "Swap one of your cards with an opponent card"
 };
+const BOT_NAMES = ["Ada", "Babbage", "Cardsharp", "Noor", "Vega"];
+const BOT_TURN_DELAY_MS = 850;
 
 const app = express();
 const server = http.createServer(app);
@@ -112,6 +114,17 @@ function advanceTurn(room) {
       finishRound(room);
     }
   }
+}
+
+function scheduleBotTurn(room) {
+  if (room.botTimer || room.status !== "playing") return;
+  const player = currentPlayer(room);
+  if (!player?.isBot) return;
+
+  room.botTimer = setTimeout(() => {
+    room.botTimer = null;
+    playBotTurn(room.code);
+  }, BOT_TURN_DELAY_MS);
 }
 
 function ensureDeck(room) {
@@ -228,7 +241,8 @@ function publicState(room, viewerId) {
     status: room.status,
     hostId: room.hostId,
     you: viewerId,
-    canStart: room.status !== "playing" && room.players.length >= 2 && room.hostId === viewerId,
+    canAddBot: room.status !== "playing" && room.hostId === viewerId && activePlayers(room).length < 6,
+    canStart: room.status !== "playing" && activePlayers(room).length >= 2 && room.hostId === viewerId,
     deckCount: room.deck.length,
     discardTop: serializeCard(room.discard.at(-1), true),
     drawnCard: viewer?.id === currentPlayer(room)?.id ? serializeCard(room.drawnCard, true) : null,
@@ -244,6 +258,7 @@ function publicState(room, viewerId) {
       id: player.id,
       name: player.name,
       connected: player.connected,
+      isBot: Boolean(player.isBot),
       score: ended ? player.score : null,
       cardCount: player.hand.length,
       isHost: player.id === room.hostId,
@@ -258,11 +273,248 @@ function emitRoom(room) {
     if (!player.socketId || player.left) continue;
     io.to(player.socketId).emit("state", publicState(room, player.id));
   }
+  scheduleBotTurn(room);
 }
 
 function addLog(room, message) {
   room.log.unshift(message);
   room.log = room.log.slice(0, 18);
+}
+
+function makeBot(room) {
+  const usedNames = new Set(room.players.map((player) => player.name));
+  const baseName = BOT_NAMES.find((name) => !usedNames.has(name)) || `Bot ${activePlayers(room).length}`;
+  return {
+    id: makeId("b_"),
+    token: makeId("bt_"),
+    name: baseName,
+    socketId: null,
+    connected: true,
+    left: false,
+    isBot: true,
+    hand: [],
+    score: null
+  };
+}
+
+function knownCardsFor(room, bot) {
+  const known = [];
+  for (const player of activePlayers(room)) {
+    for (const card of player.hand) {
+      if (card.knownTo.includes(bot.id)) known.push(card);
+    }
+  }
+  known.push(...room.discard);
+  if (room.drawnCard?.knownTo.includes(bot.id)) known.push(room.drawnCard);
+  return known;
+}
+
+function unknownAverageFor(room, bot) {
+  const knownIds = new Set(knownCardsFor(room, bot).map((card) => card.id));
+  const hiddenCards = [];
+  for (const player of activePlayers(room)) {
+    for (const card of player.hand) {
+      if (!knownIds.has(card.id)) hiddenCards.push(card);
+    }
+  }
+  hiddenCards.push(...room.deck.filter((card) => !knownIds.has(card.id)));
+  if (!hiddenCards.length) return 6.5;
+  return hiddenCards.reduce((sum, card) => sum + card.value, 0) / hiddenCards.length;
+}
+
+function estimatedCardValue(room, bot, card) {
+  if (card.knownTo.includes(bot.id)) return card.value;
+  return unknownAverageFor(room, bot);
+}
+
+function ownCardEstimates(room, bot) {
+  return bot.hand.map((card, index) => ({
+    index,
+    card,
+    known: card.knownTo.includes(bot.id),
+    value: estimatedCardValue(room, bot, card)
+  }));
+}
+
+function worstOwnCard(room, bot) {
+  return ownCardEstimates(room, bot)
+    .sort((a, b) => b.value - a.value || Number(a.known) - Number(b.known))[0];
+}
+
+function bestKnownOpponentCard(room, bot) {
+  const candidates = [];
+  for (const player of activePlayers(room)) {
+    if (player.id === bot.id) continue;
+    player.hand.forEach((card, index) => {
+      if (card.knownTo.includes(bot.id)) {
+        candidates.push({ player, index, card, value: card.value });
+      }
+    });
+  }
+  return candidates.sort((a, b) => a.value - b.value)[0] || null;
+}
+
+function unknownOwnIndex(bot) {
+  const unknown = bot.hand
+    .map((card, index) => ({ card, index }))
+    .filter(({ card }) => !card.knownTo.includes(bot.id));
+  if (!unknown.length) return null;
+  return unknown[crypto.randomInt(unknown.length)].index;
+}
+
+function opponentForPeek(room, bot) {
+  const opponents = activePlayers(room).filter((player) => player.id !== bot.id);
+  return opponents
+    .map((player) => ({
+      player,
+      unknownIndexes: player.hand
+        .map((card, index) => ({ card, index }))
+        .filter(({ card }) => !card.knownTo.includes(bot.id))
+        .map(({ index }) => index)
+    }))
+    .filter((entry) => entry.unknownIndexes.length)
+    .sort((a, b) => a.unknownIndexes.length - b.unknownIndexes.length)[0] || null;
+}
+
+function shouldCallCabo(room, bot) {
+  if (room.caboCalledBy || room.turnPhase !== "draw") return false;
+  const estimates = ownCardEstimates(room, bot);
+  const knownCount = estimates.filter((card) => card.known).length;
+  const estimate = estimates.reduce((sum, card) => sum + card.value, 0);
+  const players = activePlayers(room).length;
+  const threshold = players <= 2 ? 10 : 9;
+  return knownCount >= 3 && estimate <= threshold || knownCount === 4 && estimate <= threshold + 2;
+}
+
+function replaceWithDrawn(room, bot, handIndex, logPrefix = "") {
+  const outgoing = takeCardFromHand(bot, handIndex);
+  bot.hand[handIndex] = room.drawnCard;
+  bot.hand[handIndex].knownTo = Array.from(new Set([...(bot.hand[handIndex].knownTo || []), bot.id]));
+  room.discard.push(outgoing);
+  addLog(room, `${bot.name} ${logPrefix}replaced a card and discarded ${cardLabel(outgoing)}.`);
+  advanceTurn(room);
+}
+
+function discardDrawnForBot(room, bot) {
+  const card = room.drawnCard;
+  room.discard.push(card);
+  room.drawnCard = null;
+  const power = isPowerCard(card);
+  if (power) {
+    room.pendingPower = { playerId: bot.id, type: power, source: card };
+    room.turnPhase = "power";
+    addLog(room, `${bot.name} discarded ${cardLabel(card)} for a power.`);
+    useBotPower(room, bot);
+  } else {
+    addLog(room, `${bot.name} discarded ${cardLabel(card)}.`);
+    advanceTurn(room);
+  }
+}
+
+function useBotPower(room, bot) {
+  if (!room.pendingPower || room.pendingPower.playerId !== bot.id) return;
+
+  if (room.pendingPower.type === "ownPeek") {
+    const index = unknownOwnIndex(bot);
+    if (index === null) {
+      addLog(room, `${bot.name} skipped the power.`);
+      advanceTurn(room);
+      return;
+    }
+    const card = takeCardFromHand(bot, index);
+    card.knownTo = Array.from(new Set([...card.knownTo, bot.id]));
+    addLog(room, `${bot.name} peeked at one of their cards.`);
+    advanceTurn(room);
+    return;
+  }
+
+  if (room.pendingPower.type === "otherPeek") {
+    const target = opponentForPeek(room, bot);
+    if (!target) {
+      addLog(room, `${bot.name} skipped the power.`);
+      advanceTurn(room);
+      return;
+    }
+    const index = target.unknownIndexes[crypto.randomInt(target.unknownIndexes.length)];
+    const card = takeCardFromHand(target.player, index);
+    card.knownTo = Array.from(new Set([...card.knownTo, bot.id]));
+    addLog(room, `${bot.name} peeked at ${target.player.name}'s card.`);
+    advanceTurn(room);
+    return;
+  }
+
+  if (room.pendingPower.type === "swap") {
+    const ownWorst = worstOwnCard(room, bot);
+    const opponentBest = bestKnownOpponentCard(room, bot);
+    if (!opponentBest || !ownWorst || ownWorst.value <= opponentBest.value + 1.5) {
+      addLog(room, `${bot.name} skipped the swap.`);
+      advanceTurn(room);
+      return;
+    }
+    const ownCard = takeCardFromHand(bot, ownWorst.index);
+    const targetCard = takeCardFromHand(opponentBest.player, opponentBest.index);
+    bot.hand[ownWorst.index] = targetCard;
+    opponentBest.player.hand[opponentBest.index] = ownCard;
+    addLog(room, `${bot.name} swapped with ${opponentBest.player.name}.`);
+    advanceTurn(room);
+  }
+}
+
+function playBotTurn(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room || room.status !== "playing") return;
+  const bot = currentPlayer(room);
+  if (!bot?.isBot) return;
+
+  try {
+    if (shouldCallCabo(room, bot)) {
+      room.caboCalledBy = bot.id;
+      room.finalTurnsRemaining = activePlayers(room).length - 1;
+      addLog(room, `${bot.name} called Cabo. Everyone else gets one turn.`);
+      advanceTurn(room);
+      emitRoom(room);
+      return;
+    }
+
+    if (room.turnPhase === "draw") {
+      const discard = room.discard.at(-1);
+      const worst = worstOwnCard(room, bot);
+      if (discard && worst && discard.value < worst.value - 0.35) {
+        room.drawnCard = room.discard.pop();
+        room.drawnCard.knownTo = Array.from(new Set([...room.drawnCard.knownTo, bot.id]));
+        room.turnPhase = "replace";
+        addLog(room, `${bot.name} took ${cardLabel(room.drawnCard)} from discard.`);
+        replaceWithDrawn(room, bot, worst.index);
+      } else {
+        ensureDeck(room);
+        const card = room.deck.pop();
+        if (!card) {
+          finishRound(room);
+        } else {
+          card.knownTo = [bot.id];
+          room.drawnCard = card;
+          room.turnPhase = "decide";
+          addLog(room, `${bot.name} drew from the deck.`);
+        }
+      }
+    }
+
+    if (room.turnPhase === "decide" && room.drawnCard) {
+      const worst = worstOwnCard(room, bot);
+      const improvement = worst ? worst.value - room.drawnCard.value : 0;
+      if (worst && improvement > 0.75 || room.drawnCard.value <= 3) {
+        replaceWithDrawn(room, bot, worst.index);
+      } else {
+        discardDrawnForBot(room, bot);
+      }
+    }
+
+    emitRoom(room);
+  } catch (error) {
+    addLog(room, `${bot.name} hesitated: ${error.message}`);
+    advanceTurn(room);
+    emitRoom(room);
+  }
 }
 
 io.on("connection", (socket) => {
@@ -344,6 +596,22 @@ io.on("connection", (socket) => {
       const room = getRoomOrThrow(roomCode);
       if (room.hostId !== playerId) throw new Error("Only the host can start.");
       startRound(room);
+      reply?.({ ok: true });
+      emitRoom(room);
+    } catch (error) {
+      reply?.({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on("addBot", ({ roomCode, playerId }, reply) => {
+    try {
+      const room = getRoomOrThrow(roomCode);
+      if (room.hostId !== playerId) throw new Error("Only the host can add AI players.");
+      if (room.status === "playing") throw new Error("Add AI players between rounds.");
+      if (activePlayers(room).length >= 6) throw new Error("That room is full.");
+      const bot = makeBot(room);
+      room.players.push(bot);
+      addLog(room, `${bot.name} joined as AI.`);
       reply?.({ ok: true });
       emitRoom(room);
     } catch (error) {
