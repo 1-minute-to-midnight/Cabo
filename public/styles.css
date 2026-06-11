@@ -1,13 +1,18 @@
 :root {
-  --felt: #11604f;
-  --felt-dark: #083a35;
-  --ink: #18110d;
-  --paper: #fff8ea;
-  --paper-soft: #eadfc8;
-  --red: #bc2f2f;
-  --gold: #d6a64d;
-  --blue: #2f6f91;
-  --shadow: 0 24px 80px rgba(12, 10, 7, 0.24);
+  --felt-dark: hsl(168, 60%, 8%);
+  --felt: hsl(168, 55%, 15%);
+  --felt-light: hsl(168, 45%, 22%);
+  --ink: hsl(38, 40%, 10%);
+  --paper: hsl(38, 100%, 96%);
+  --paper-soft: hsl(38, 30%, 86%);
+  --red: hsl(355, 68%, 46%);
+  --gold: hsl(43, 62%, 57%);
+  --gold-dark: hsl(43, 62%, 35%);
+  --blue: hsl(199, 51%, 42%);
+  --glass: rgba(10, 25, 23, 0.52);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --shadow: 0 16px 48px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  --card-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -19,9 +24,10 @@ body {
   margin: 0;
   color: var(--paper);
   background:
-    radial-gradient(circle at 20% 15%, rgba(214, 166, 77, 0.26), transparent 24rem),
-    linear-gradient(135deg, #072b29 0%, #12614f 42%, #7a2c25 100%);
+    radial-gradient(circle at 50% 30%, hsl(168, 45%, 18%), hsl(168, 60%, 5%));
   font-family: "Source Serif 4", Georgia, serif;
+  perspective: 1200px;
+  overflow-x: hidden;
 }
 
 button,
@@ -36,14 +42,16 @@ button {
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.38;
 }
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
   min-height: 100vh;
+  max-width: 1600px;
+  margin: 0 auto;
   padding: 20px;
 }
 
@@ -51,10 +59,11 @@ button:disabled {
 .notice,
 .table,
 .side {
-  border: 1px solid rgba(255, 248, 234, 0.2);
-  background: rgba(8, 58, 53, 0.72);
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .topbar {
@@ -62,17 +71,17 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  min-height: 94px;
-  padding: 16px 18px;
-  border-radius: 8px;
+  gap: 20px;
+  min-height: 84px;
+  padding: 14px 24px;
+  border-radius: 12px;
 }
 
 .eyebrow {
   margin: 0 0 2px;
   color: var(--gold);
-  font: 600 0.74rem/1 "IBM Plex Mono", monospace;
-  letter-spacing: 0;
+  font: 600 0.76rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 
@@ -80,16 +89,25 @@ h1,
 h2 {
   margin: 0;
   font-family: "Fraunces", Georgia, serif;
-  letter-spacing: 0;
 }
 
 h1 {
-  font-size: clamp(2rem, 5vw, 4.8rem);
-  line-height: 0.92;
+  font-size: clamp(1.8rem, 4vw, 3.2rem);
+  line-height: 0.95;
+  font-weight: 900;
+  background: linear-gradient(135deg, #ffffff 60%, var(--paper-soft));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 h2 {
-  font-size: 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gold);
+  border-bottom: 1px solid rgba(255, 248, 234, 0.12);
+  padding-bottom: 8px;
 }
 
 .join-panel,
@@ -97,33 +115,63 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
 input {
-  width: 138px;
+  width: 148px;
   min-height: 42px;
-  border: 1px solid rgba(255, 248, 234, 0.34);
-  border-radius: 6px;
-  padding: 0 12px;
+  border: 1px solid rgba(255, 248, 234, 0.16);
+  border-radius: 8px;
+  padding: 0 14px;
   color: var(--paper);
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.35);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85rem;
   outline: 0;
+  transition: all 0.2s ease;
 }
 
 input:focus {
   border-color: var(--gold);
+  box-shadow: 0 0 10px rgba(214, 166, 77, 0.25);
 }
 
 button {
   min-height: 42px;
-  border-radius: 6px;
-  padding: 0 14px;
-  color: #20140e;
-  background: var(--gold);
+  border-radius: 8px;
+  padding: 0 18px;
+  color: hsl(38, 40%, 8%);
+  background: linear-gradient(135deg, var(--gold), hsl(43, 62%, 48%));
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 10px rgba(214, 166, 77, 0.15);
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(214, 166, 77, 0.3);
+  filter: brightness(1.08);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  box-shadow: none;
+}
+
+button.secondary:hover:not(:disabled) {
+  background: rgba(214, 166, 77, 0.1);
+  box-shadow: 0 0 12px rgba(214, 166, 77, 0.15);
 }
 
 .hidden {
@@ -132,12 +180,17 @@ button {
 
 .notice {
   grid-column: 1 / -1;
-  min-height: 38px;
+  min-height: 42px;
   border-radius: 8px;
-  padding: 9px 14px;
-  color: var(--paper);
+  padding: 10px 18px;
+  color: var(--gold);
+  background: rgba(214, 166, 77, 0.08);
+  border: 1px solid rgba(214, 166, 77, 0.25);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: inset 0 0 8px rgba(214, 166, 77, 0.05);
 }
 
 .notice:empty {
@@ -148,23 +201,25 @@ button {
   position: relative;
   display: grid;
   grid-template-rows: 1fr;
-  min-height: 720px;
+  min-height: 760px;
   overflow: hidden;
   border-radius: 999px;
-  padding: 24px;
+  padding: 30px;
   background:
-    radial-gradient(ellipse at center, rgba(25, 111, 83, 0.92) 0 42%, rgba(8, 58, 53, 0.9) 68%),
-    rgba(8, 58, 53, 0.72);
+    radial-gradient(ellipse at center, hsl(168, 55%, 15%) 0 45%, hsl(168, 60%, 7%) 75%),
+    hsl(168, 60%, 7%);
 }
 
 .table::before {
   content: "";
   position: absolute;
-  inset: 18px;
+  inset: 22px;
   z-index: -1;
-  border: 8px solid rgba(103, 62, 38, 0.72);
+  border: 10px solid hsl(26, 45%, 18%);
   border-radius: 999px;
-  box-shadow: inset 0 0 0 2px rgba(255, 248, 234, 0.18);
+  box-shadow: 
+    inset 0 0 30px rgba(0, 0, 0, 0.7),
+    0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 .draw-zone {
@@ -173,61 +228,214 @@ button {
   top: 50%;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(3, 82px);
-  gap: 10px;
+  grid-template-columns: repeat(3, 100px);
+  gap: 24px;
   align-items: center;
   justify-content: center;
-  width: min(360px, 44vw);
+  width: min(390px, 44vw);
   transform: translate(-50%, -50%);
+  background: rgba(8, 20, 18, 0.4);
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.3);
 }
 
-.pile,
 .card {
   aspect-ratio: 5 / 7;
   min-height: 0;
-  border-radius: 8px;
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid rgba(24, 17, 13, 0.14);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(214, 166, 77, 0.08), transparent 42%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.82), transparent 32%),
+    var(--paper);
+  transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  user-select: none;
+  position: relative;
+  overflow: hidden;
 }
 
-.pile {
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 248, 234, 0.32);
-  padding: 10px;
-  color: var(--paper);
-  background: repeating-linear-gradient(45deg, #1b514a 0 8px, #123e38 8px 16px);
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(24, 17, 13, 0.08);
+  border-radius: 7px;
+  pointer-events: none;
 }
 
-.pile {
-  width: 82px;
+/* Playing Card Face Details */
+.card-corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.05;
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 900;
+  color: inherit;
 }
 
-.discard {
-  background: var(--paper);
+.card-corner.top-left {
+  top: 6px;
+  left: 8px;
+}
+
+.card-corner.bottom-right {
+  bottom: 6px;
+  right: 8px;
+  transform: rotate(180deg);
+}
+
+.corner-rank {
+  font-size: 1.15rem;
+}
+
+.corner-suit {
+  font-size: 0.85rem;
+  margin-top: 1px;
+}
+
+.card-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68%;
+  height: 72%;
+}
+
+.center-suit {
+  font-size: 2.2rem;
+  line-height: 1;
+  font-family: "Fraunces", Georgia, serif;
+}
+
+.center-suit.large-ace {
+  font-size: 3.2rem;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+}
+
+.pip-grid {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.pip {
+  position: absolute;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(1.05rem, 2.2vw, 1.55rem);
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35));
+}
+
+.top-left-pip { left: 24%; top: 16%; }
+.top-right-pip { left: 76%; top: 16%; }
+.upper-left { left: 24%; top: 32%; }
+.upper-right { left: 76%; top: 32%; }
+.mid-top { left: 50%; top: 18%; }
+.mid-left { left: 24%; top: 50%; }
+.mid-right { left: 76%; top: 50%; }
+.center-left { left: 24%; top: 50%; }
+.center { left: 50%; top: 50%; }
+.center-right { left: 76%; top: 50%; }
+.lower-left { left: 24%; top: 68%; }
+.lower-right { left: 76%; top: 68%; }
+.mid-bottom { left: 50%; top: 82%; transform: translate(-50%, -50%) rotate(180deg); }
+.bottom-left-pip { left: 24%; top: 84%; transform: translate(-50%, -50%) rotate(180deg); }
+.bottom-right-pip { left: 76%; top: 84%; transform: translate(-50%, -50%) rotate(180deg); }
+
+.face-art {
+  width: 82%;
+  height: 82%;
+  filter: drop-shadow(0 2px 0 rgba(255, 255, 255, 0.34)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.14));
+}
+
+.jack-art {
+  color: #3b6e8c;
+}
+
+.queen-art {
+  color: #a45a8f;
+}
+
+.king-art {
+  color: #d6a64d;
+}
+
+.red-suit,
+.red-card {
+  color: var(--red);
+}
+
+.black-suit,
+.black-card {
   color: var(--ink);
 }
 
-.pile span,
-.pile strong {
-  display: block;
-  text-align: center;
+.discard-button {
+  width: 100px;
+  aspect-ratio: 5 / 7;
+  min-height: 0;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
 }
 
-.pile strong {
-  font: 900 2rem/1 "Fraunces", Georgia, serif;
+.discard-button .card {
+  width: 100%;
+  height: 100%;
 }
 
-.pile-mark {
+.empty-discard {
+  display: grid;
+  place-items: center;
+  color: rgba(24, 17, 13, 0.55);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+/* Deck count styling inside hidden card */
+.deck-count {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 900;
+  font-size: 1.25rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  z-index: 2;
 }
 
 .drawn-card {
-  min-height: 115px;
+  min-height: 140px;
+  width: 100px;
 }
 
 .drawn-card .card {
-  width: 82px;
+  width: 100px;
+  height: 140px;
 }
 
 .turn-actions {
@@ -236,63 +444,111 @@ button {
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
+  margin-top: 4px;
+}
+
+.turn-actions button {
+  min-height: 36px;
+  font-size: 0.75rem;
+  padding: 0 14px;
 }
 
 .players {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(210px, 1fr));
+  grid-template-columns: repeat(3, minmax(360px, 1fr));
   grid-template-rows: repeat(3, minmax(130px, 1fr));
-  gap: 14px;
+  gap: 16px;
   width: 100%;
   min-height: 100%;
 }
 
 .player {
   align-self: center;
-  padding: 14px;
-  border: 1px solid rgba(255, 248, 234, 0.22);
-  border-radius: 8px;
-  background: rgba(255, 248, 234, 0.08);
+  justify-self: center;
+  width: 410px;
+  padding: 16px 10px;
+  border: 1px solid rgba(255, 248, 234, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 248, 234, 0.04);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
 }
 
 .drawn-slot {
-  width: min(88px, 24%);
-  margin: 10px auto 0;
+  width: 88px;
+  height: 123px;
+  margin: 12px auto 0;
 }
 
 .drawn-in-hand {
-  min-height: 118px;
+  min-height: 123px;
+  width: 88px;
+  height: 123px;
   outline: 2px solid var(--gold);
-  box-shadow: 0 16px 38px rgba(214, 166, 77, 0.3);
+  box-shadow: 0 16px 38px rgba(214, 166, 77, 0.35);
+}
+
+@keyframes slideDown {
+  from { transform: translate(-50%, -20px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
 }
 
 .peek-timer {
+  position: fixed;
+  top: 104px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  width: min(320px, 90vw);
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 6px 10px;
   align-items: center;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border: 1px solid rgba(214, 166, 77, 0.55);
-  border-radius: 6px;
+  padding: 10px 14px;
+  border: 1px solid var(--gold);
+  border-radius: 8px;
   color: var(--paper);
-  background: rgba(24, 17, 13, 0.42);
+  background: rgba(10, 25, 23, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: slideDown 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
 }
 
 .peek-timer strong {
   color: var(--gold);
 }
 
+@keyframes pulseBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.28; }
+}
+
+.peek-timer.warning {
+  border-color: var(--red);
+  background: rgba(45, 10, 10, 0.92);
+  box-shadow: 0 0 16px rgba(188, 47, 47, 0.45);
+  animation: pulseBlink 0.6s infinite ease-in-out;
+}
+
+.peek-timer.warning strong {
+  color: var(--red);
+}
+
+.peek-timer.warning .peek-timer-track i {
+  background: var(--red);
+}
+
 .peek-timer-track {
   grid-column: 1 / -1;
-  height: 5px;
+  height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 248, 234, 0.18);
+  background: rgba(255, 248, 234, 0.12);
 }
 
 .peek-timer-track i {
@@ -337,13 +593,50 @@ button {
   grid-row: 1;
 }
 
+@keyframes activePulse {
+  0% {
+    border-color: rgba(214, 166, 77, 0.3);
+    box-shadow: 0 0 12px rgba(214, 166, 77, 0.1);
+    background: rgba(214, 166, 77, 0.04);
+  }
+  50% {
+    border-color: rgba(214, 166, 77, 0.85);
+    box-shadow: 0 0 28px rgba(214, 166, 77, 0.35);
+    background: rgba(214, 166, 77, 0.08);
+  }
+  100% {
+    border-color: rgba(214, 166, 77, 0.3);
+    box-shadow: 0 0 12px rgba(214, 166, 77, 0.1);
+    background: rgba(214, 166, 77, 0.04);
+  }
+}
+
 .player.current {
-  border-color: var(--gold);
-  background: rgba(214, 166, 77, 0.14);
+  animation: activePulse 2.2s infinite ease-in-out;
+}
+
+@keyframes caboPulse {
+  0% {
+    border-color: rgba(188, 47, 47, 0.4);
+    box-shadow: 0 0 16px rgba(188, 47, 47, 0.25);
+  }
+  50% {
+    border-color: rgba(188, 47, 47, 0.95);
+    box-shadow: 0 0 32px rgba(188, 47, 47, 0.55);
+  }
+  100% {
+    border-color: rgba(188, 47, 47, 0.4);
+    box-shadow: 0 0 16px rgba(188, 47, 47, 0.25);
+  }
+}
+
+.player.cabo-called {
+  animation: caboPulse 1.6s infinite ease-in-out;
 }
 
 .player.winner {
   border-color: #fff8ea;
+  box-shadow: 0 0 20px rgba(255, 248, 234, 0.2);
 }
 
 .player-head {
@@ -354,30 +647,49 @@ button {
   min-height: 28px;
   margin-bottom: 12px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+}
+
+.player-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .badges {
   display: flex;
-  gap: 6px;
+  gap: 5px;
 }
 
 .badge {
-  border-radius: 999px;
-  padding: 3px 7px;
+  border-radius: 4px;
+  padding: 2px 6px;
   color: var(--ink);
   background: var(--paper-soft);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.badge.score-badge {
+  background: var(--gold);
+  color: hsl(38, 40%, 10%);
+}
+
+.badge.ai-badge {
+  background: var(--blue);
+  color: #ffffff;
 }
 
 .hand {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(48px, 1fr));
-  gap: 8px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
 }
 
 .card-button {
   display: block;
-  width: 100%;
+  width: 88px;
+  height: 123px;
   min-height: 0;
   border-radius: 8px;
   padding: 0;
@@ -389,80 +701,90 @@ button {
   opacity: 1;
 }
 
-.card {
-  position: relative;
-  display: grid;
-  align-content: space-between;
-  border: 1px solid rgba(24, 17, 13, 0.18);
-  padding: 9px;
-  color: var(--ink);
-  background: var(--paper);
-  transition: transform 140ms ease, box-shadow 140ms ease;
-}
-
 .hand .card {
-  min-height: 118px;
+  width: 88px;
+  height: 123px;
 }
 
 .card.selectable:hover {
-  transform: translateY(-4px) rotate(-1deg);
-  box-shadow: 0 20px 34px rgba(0, 0, 0, 0.28);
+  transform: translateY(-8px) rotate(-1.5deg);
+  box-shadow: 
+    0 16px 28px rgba(0, 0, 0, 0.35),
+    0 0 0 2px var(--gold);
 }
 
-.card.hidden-card {
-  border-color: rgba(255, 248, 234, 0.2);
-  background:
-    linear-gradient(135deg, rgba(255, 248, 234, 0.12), transparent),
-    repeating-linear-gradient(45deg, #88382f 0 7px, #622820 7px 14px);
+@keyframes selected-glow {
+  0% {
+    box-shadow: 
+      0 0 0 4px var(--gold),
+      0 12px 24px rgba(214, 166, 77, 0.4),
+      0 0 10px 2px rgba(214, 166, 77, 0.3);
+  }
+  50% {
+    box-shadow: 
+      0 0 0 5px var(--gold),
+      0 18px 36px rgba(214, 166, 77, 0.75),
+      0 0 20px 8px rgba(214, 166, 77, 0.6);
+  }
+  100% {
+    box-shadow: 
+      0 0 0 4px var(--gold),
+      0 12px 24px rgba(214, 166, 77, 0.4),
+      0 0 10px 2px rgba(214, 166, 77, 0.3);
+  }
 }
 
 .card.selected {
-  outline: 3px solid var(--gold);
+  transform: translateY(-16px) scale(1.08);
+  animation: selected-glow 1.5s infinite ease-in-out;
+  z-index: 10;
+  border-color: var(--gold) !important;
 }
 
-.motion-card {
+/* Casino Pattern Card Back */
+.card.hidden-card {
+  border: 1px solid rgba(255, 248, 234, 0.25);
+  background: 
+    radial-gradient(circle at center, var(--gold) 0 12%, transparent 12%),
+    repeating-conic-gradient(from 0deg, #6c251e 0deg 30deg, #571e18 30deg 60deg);
+  background-size: 24px 34px;
+  box-shadow: 
+    inset 0 0 0 5px rgba(255, 248, 234, 0.94),
+    0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+.animating-ghost {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.flying-card-clone {
   position: fixed;
-  z-index: 1000;
+  z-index: 9999;
   pointer-events: none;
   margin: 0;
-  transition: transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 520ms ease;
-  transform-origin: top left;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transition: none !important;
 }
 
-.motion-arrow {
-  position: fixed;
-  z-index: 999;
-  height: 2px;
-  pointer-events: none;
-  background: linear-gradient(90deg, rgba(214, 166, 77, 0), rgba(214, 166, 77, 0.95));
-  opacity: 0;
-  transform-origin: 0 50%;
-  transition: opacity 160ms ease;
-}
-
-.motion-arrow::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 9px;
-  height: 9px;
-  border-right: 2px solid rgba(214, 166, 77, 0.95);
-  border-top: 2px solid rgba(214, 166, 77, 0.95);
-  transform: translateY(-50%) rotate(45deg);
-}
-
-.motion-arrow.active {
-  opacity: 1;
+.card-placeholder {
+  display: block;
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  border: 2px dashed rgba(255, 248, 234, 0.16);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .card-rank {
-  font: 900 1.75rem/0.9 "Fraunces", Georgia, serif;
+  font: 900 1.9rem/0.85 "Fraunces", Georgia, serif;
 }
 
 .card-suit {
   justify-self: end;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
+  line-height: 0.85;
 }
 
 .red-card {
@@ -472,36 +794,153 @@ button {
 .side {
   display: grid;
   align-content: start;
-  gap: 18px;
-  border-radius: 8px;
-  padding: 18px;
+  gap: 20px;
+  border-radius: 12px;
+  padding: 20px;
 }
 
 .side section {
   display: grid;
-  gap: 9px;
+  gap: 10px;
 }
 
 .status-text,
 .rules,
 .log {
   margin: 0;
-  color: rgba(255, 248, 234, 0.82);
+  color: rgba(255, 248, 234, 0.84);
+}
+
+.status-text {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--gold);
 }
 
 .rules {
+  font-size: 0.82rem;
   line-height: 1.45;
+  color: rgba(255, 248, 234, 0.7);
 }
 
+/* Custom Styled Dealer's Log */
 .log {
   display: grid;
   gap: 8px;
-  padding-left: 18px;
+  padding: 10px 10px 10px 18px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
+  max-height: 250px;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-@media (max-width: 900px) {
+.log::-webkit-scrollbar {
+  width: 6px;
+}
+.log::-webkit-scrollbar-track {
+  background: transparent;
+}
+.log::-webkit-scrollbar-thumb {
+  background: rgba(255, 248, 234, 0.14);
+  border-radius: 3px;
+}
+.log::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 248, 234, 0.3);
+}
+
+/* End Round Scoreboard Modal CSS */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 12, 11, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 20px;
+  transition: opacity 0.25s ease;
+}
+
+.modal-content {
+  background: linear-gradient(135deg, hsl(168, 50%, 12%), hsl(168, 60%, 6%));
+  border: 1px solid rgba(255, 248, 234, 0.2);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  border-radius: 16px;
+  width: min(540px, 94vw);
+  padding: 26px;
+  display: grid;
+  gap: 20px;
+}
+
+.modal-subtitle {
+  margin: 0 0 2px;
+  color: var(--gold);
+  font: 600 0.78rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.modal-content h2 {
+  font-size: 1.8rem;
+  color: #ffffff;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.scoreboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.scoreboard-table th, 
+.scoreboard-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 248, 234, 0.08);
+}
+
+.scoreboard-table th {
+  color: var(--gold);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.scoreboard-table td {
+  font-size: 0.95rem;
+}
+
+.scoreboard-table tr.winner-row {
+  background: rgba(214, 166, 77, 0.08);
+  color: var(--gold);
+}
+
+.scoreboard-table tr.winner-row td {
+  font-weight: 700;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.modal-footer button {
+  min-height: 40px;
+}
+
+/* Responsiveness adjustments */
+@media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;
     padding: 12px;
@@ -515,6 +954,7 @@ button {
   .join-panel,
   .room-panel {
     justify-content: flex-start;
+    width: 100%;
   }
 
   .draw-zone {
@@ -522,20 +962,19 @@ button {
     left: auto;
     top: auto;
     width: 100%;
-    margin: 0 auto 18px;
+    margin: 0 auto 20px;
     transform: none;
-    grid-template-columns: repeat(3, 82px);
-  }
-
-  .turn-actions {
-    grid-column: 1 / -1;
   }
 
   .table {
     display: block;
     min-height: auto;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 16px;
+  }
+
+  .table::before {
+    display: none;
   }
 
   .players {
@@ -561,4 +1000,203 @@ button {
   .room-panel {
     width: 100%;
   }
+}
+
+/* Arrow trails for move indicators */
+#trailSvg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10000;
+  overflow: visible;
+}
+
+.trail-path {
+  fill: none;
+  stroke-width: 3.5px;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px var(--shadow-color));
+}
+
+.trail-path.inward {
+  stroke: #00f3ff; /* Electric cyan */
+  --shadow-color: rgba(0, 243, 255, 0.65);
+}
+
+.trail-path.outward {
+  stroke: #ffaa00; /* Neon gold/orange */
+  --shadow-color: rgba(255, 170, 0, 0.65);
+}
+
+/* Drag and Drop highlights */
+.dragging {
+  opacity: 0.4;
+  transform: scale(0.96);
+}
+
+.card-button.drag-over .card,
+.pile.drag-over {
+  box-shadow: 
+    0 0 0 3px var(--gold),
+    0 0 20px rgba(214, 166, 77, 0.7) !important;
+  transform: translateY(-4px) scale(1.02);
+}
+
+.drawn-card.drag-over {
+  outline: 2px dashed var(--gold);
+  background: rgba(214, 166, 77, 0.1);
+  border-radius: 8px;
+}
+
+/* Deck & Discard card layouts */
+.discard-container,
+.deck-container {
+  position: relative;
+  width: 100px;
+  height: 140px; /* Matches aspect ratio of standard cards */
+}
+
+.discard-label,
+.deck-label {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+#deckBtn,
+#discardBtn {
+  width: 100%;
+  height: 100%;
+}
+
+button#deckBtn:disabled,
+button#discardBtn:disabled {
+  opacity: 1; /* Keeps deck and discard pile cards fully colored when disabled */
+  cursor: pointer;
+}
+
+/* Visual Bot Thinking Indicator and Status badges */
+.status-indicator {
+  display: inline-block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
+.status-indicator.thinking {
+  color: var(--gold);
+  background: rgba(214, 166, 77, 0.12);
+  border: 1px solid rgba(214, 166, 77, 0.25);
+  animation: pulse-thinking 1.4s infinite ease-in-out;
+}
+
+.status-indicator.active {
+  color: #00f3ff;
+  background: rgba(0, 243, 255, 0.12);
+  border: 1px solid rgba(0, 243, 255, 0.25);
+}
+
+.status-indicator.cabo-caller {
+  color: var(--red);
+  background: rgba(235, 94, 85, 0.12);
+  border: 1px solid rgba(235, 94, 85, 0.25);
+}
+
+@keyframes pulse-thinking {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+/* Cabo call fullscreen overlay */
+.cabo-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 12, 10, 0.82);
+  backdrop-filter: blur(10px);
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.cabo-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cabo-overlay.hidden {
+  display: none !important;
+}
+
+.cabo-banner {
+  text-align: center;
+  background: linear-gradient(135deg, hsl(168, 55%, 12%) 0%, hsl(168, 65%, 6%) 100%);
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  padding: 36px 56px;
+  box-shadow: 
+    0 24px 60px rgba(0, 0, 0, 0.75),
+    0 0 35px rgba(214, 166, 77, 0.35),
+    inset 0 0 20px rgba(255, 248, 234, 0.05);
+  transform: scale(0.78);
+  transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.cabo-overlay.active .cabo-banner {
+  transform: scale(1);
+}
+
+.cabo-banner-subtitle {
+  display: block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+#caboBannerTitle {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: var(--paper);
+  margin: 12px 0 16px;
+  text-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.6),
+    0 0 25px rgba(255, 248, 234, 0.45);
+  line-height: 1.15;
+}
+
+.cabo-banner-footer {
+  display: block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82rem;
+  color: rgba(255, 248, 234, 0.65);
+  letter-spacing: 0.5px;
 }

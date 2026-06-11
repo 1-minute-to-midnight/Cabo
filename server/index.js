@@ -15,7 +15,7 @@ const POWER_LABELS = {
   optionalLookSwap: "Look at one of yours and one opponent card, then choose whether to swap"
 };
 const BOT_NAMES = ["Ada", "Babbage", "Cardsharp", "Noor", "Vega"];
-const BOT_TURN_DELAY_MS = 850;
+const BOT_TURN_DELAY_MS = 1600;
 const REVEAL_MS = 4200;
 
 const app = express();
@@ -134,6 +134,15 @@ function advanceTurn(room) {
   }
 }
 
+function endCurrentPlayerTurn(room) {
+  const current = currentPlayer(room);
+  if (!current || current.isBot || room.caboCalledBy) {
+    advanceTurn(room);
+  } else {
+    room.turnPhase = "turnEnd";
+  }
+}
+
 function scheduleBotTurn(room) {
   if (room.botTimer || room.status !== "playing") return;
   const player = currentPlayer(room);
@@ -244,12 +253,31 @@ function finishRound(room) {
     lowScore = Math.min(lowScore, player.score);
   }
 
-  room.winnerIds = activePlayers(room)
-    .filter((player) => player.score === lowScore)
-    .map((player) => player.id);
+  const defaultWinners = activePlayers(room).filter((player) => player.score === lowScore);
 
-  const winners = room.winnerIds.map((id) => getPlayer(room, id)?.name).filter(Boolean).join(", ");
-  room.log.unshift(`${winners} won the round with ${lowScore}.`);
+  if (room.caboCalledBy) {
+    const caller = getPlayer(room, room.caboCalledBy);
+    if (caller) {
+      if (caller.score === lowScore) {
+        // Caller has the lowest score: successful Cabo call (+1 TP)
+        caller.tournamentPoints = (caller.tournamentPoints || 0) + 1;
+        room.winnerIds = [caller.id];
+        addLog(room, `${caller.name} successfully called Cabo and got +1 tournament point.`);
+      } else {
+        // Caller did not have the lowest score: failed Cabo call (-1 TP, nobody wins!)
+        caller.tournamentPoints = (caller.tournamentPoints || 0) - 1;
+        room.winnerIds = []; // Nobody wins the round
+        addLog(room, `${caller.name} called Cabo incorrectly and got -1 tournament point. Nobody wins the round.`);
+      }
+    } else {
+      room.winnerIds = defaultWinners.map((p) => p.id);
+    }
+  } else {
+    // Normal round end (e.g. deck empty)
+    room.winnerIds = defaultWinners.map((p) => p.id);
+    const winners = room.winnerIds.map((id) => getPlayer(room, id)?.name).filter(Boolean).join(", ");
+    addLog(room, `${winners} won the round with ${lowScore}.`);
+  }
 }
 
 function requireTurn(room, playerId) {
@@ -297,7 +325,18 @@ function publicState(room, viewerId) {
     initialPeekNeeded: room.status === "peeking" && !viewer?.isBot && !room.initialPeekDone?.[viewerId],
     deckCount: room.deck.length,
     discardTop: serializeCard(room.discard.at(-1), true),
-    drawnCard: viewer?.id === currentPlayer(room)?.id ? serializeCard(room.drawnCard, true) : null,
+    drawnCard: (() => {
+      if (!room.drawnCard) return null;
+      const current = currentPlayer(room);
+      if (!current) return null;
+      if (viewerId === current.id) {
+        return serializeCard(room.drawnCard, true);
+      }
+      if (current.isBot) {
+        return serializeCard(room.drawnCard, false);
+      }
+      return null;
+    })(),
     currentPlayerId: currentPlayer(room)?.id || null,
     turnPhase: room.turnPhase,
     pendingPower: room.pendingPower && room.pendingPower.playerId === viewerId
@@ -320,6 +359,7 @@ function publicState(room, viewerId) {
       connected: player.connected,
       isBot: Boolean(player.isBot),
       score: ended ? player.score : null,
+      tournamentPoints: player.tournamentPoints || 0,
       cardCount: player.hand.length,
       isHost: player.id === room.hostId,
       hand: player.hand.map((card) => serializeCard(card, ended))
@@ -353,7 +393,8 @@ function makeBot(room) {
     left: false,
     isBot: true,
     hand: [],
-    score: null
+    score: null,
+    tournamentPoints: 0
   };
 }
 
@@ -453,19 +494,27 @@ function shouldCallCabo(room, bot) {
   const estimate = estimates.reduce((sum, card) => sum + card.value, 0);
   const players = activePlayers(room).length;
   const threshold = players <= 2 ? 10 : 9;
-  return knownCount >= 3 && estimate <= threshold || knownCount === 4 && estimate <= threshold + 2;
+  const handSize = bot.hand.length;
+
+  if (handSize === 0) return true;
+
+  if (knownCount === handSize && estimate <= threshold + (4 - handSize) * 2) return true;
+  if (knownCount >= Math.min(3, handSize) && estimate <= threshold) return true;
+
+  return false;
 }
 
 function replaceWithDrawn(room, bot, handIndex, logPrefix = "") {
+  const outgoing = takeCardFromHand(bot, handIndex);
   emitAnimation(room, {
     type: "replace",
     playerId: bot.id,
     handIndex,
     from: { kind: "player", playerId: bot.id },
     to: { kind: "hand", playerId: bot.id, index: handIndex },
-    discard: { kind: "discard" }
+    discard: { kind: "discard" },
+    discardedCard: serializeCard(outgoing, true)
   });
-  const outgoing = takeCardFromHand(bot, handIndex);
   bot.hand[handIndex] = room.drawnCard;
   bot.hand[handIndex].knownTo = Array.from(new Set([...(bot.hand[handIndex].knownTo || []), bot.id]));
   room.discard.push(outgoing);
@@ -478,7 +527,8 @@ function discardDrawnForBot(room, bot) {
   emitAnimation(room, {
     type: "discard",
     from: { kind: "player", playerId: bot.id },
-    to: { kind: "discard" }
+    to: { kind: "discard" },
+    discardedCard: serializeCard(card, true)
   });
   room.discard.push(card);
   room.drawnCard = null;
@@ -487,7 +537,6 @@ function discardDrawnForBot(room, bot) {
     room.pendingPower = { playerId: bot.id, type: power, source: card, stage: "choose" };
     room.turnPhase = "power";
     addLog(room, `${bot.name} discarded ${cardLabel(card)} for a power.`);
-    useBotPower(room, bot);
   } else {
     addLog(room, `${bot.name} discarded ${cardLabel(card)}.`);
     advanceTurn(room);
@@ -626,7 +675,6 @@ function playBotTurn(roomCode) {
         room.drawnCard.knownTo = Array.from(new Set([...room.drawnCard.knownTo, bot.id]));
         room.turnPhase = "replace";
         addLog(room, `${bot.name} took ${cardLabel(room.drawnCard)} from discard.`);
-        replaceWithDrawn(room, bot, worst.index);
       } else {
         ensureDeck(room);
         const card = room.deck.pop();
@@ -644,19 +692,38 @@ function playBotTurn(roomCode) {
           addLog(room, `${bot.name} drew from the deck.`);
         }
       }
+      emitRoom(room);
+      return;
+    }
+
+    if (room.turnPhase === "replace" && room.drawnCard) {
+      const worst = worstOwnCard(room, bot);
+      if (worst) {
+        replaceWithDrawn(room, bot, worst.index);
+      } else {
+        discardDrawnForBot(room, bot);
+      }
+      emitRoom(room);
+      return;
     }
 
     if (room.turnPhase === "decide" && room.drawnCard) {
       const worst = worstOwnCard(room, bot);
       const improvement = worst ? worst.value - room.drawnCard.value : 0;
-      if (worst && improvement > 0.75 || room.drawnCard.value <= 3) {
+      if (worst && (improvement > 0.75 || room.drawnCard.value <= 3)) {
         replaceWithDrawn(room, bot, worst.index);
       } else {
         discardDrawnForBot(room, bot);
       }
+      emitRoom(room);
+      return;
     }
 
-    emitRoom(room);
+    if (room.turnPhase === "power" && room.pendingPower) {
+      useBotPower(room, bot);
+      emitRoom(room);
+      return;
+    }
   } catch (error) {
     addLog(room, `${bot.name} hesitated: ${error.message}`);
     advanceTurn(room);
@@ -676,7 +743,8 @@ io.on("connection", (socket) => {
         connected: true,
         left: false,
         hand: [],
-        score: null
+        score: null,
+        tournamentPoints: 0
       };
       const room = {
         code,
@@ -718,7 +786,8 @@ io.on("connection", (socket) => {
           connected: true,
           left: false,
           hand: [],
-          score: null
+          score: null,
+          tournamentPoints: 0
         };
         room.players.push(player);
         addLog(room, `${player.name} joined.`);
@@ -846,13 +915,14 @@ io.on("connection", (socket) => {
         handIndex,
         from: { kind: "player", playerId: player.id },
         to: { kind: "hand", playerId: player.id, index: handIndex },
-        discard: { kind: "discard" }
+        discard: { kind: "discard" },
+        discardedCard: serializeCard(outgoing, true)
       });
       player.hand[handIndex] = room.drawnCard;
       player.hand[handIndex].knownTo = Array.from(new Set([...(player.hand[handIndex].knownTo || []), player.id]));
       room.discard.push(outgoing);
       addLog(room, `${player.name} replaced a card and discarded ${cardLabel(outgoing)}.`);
-      advanceTurn(room);
+      endCurrentPlayerTurn(room);
       reply?.({ ok: true });
       emitRoom(room);
     } catch (error) {
@@ -871,7 +941,8 @@ io.on("connection", (socket) => {
       emitAnimation(room, {
         type: "discard",
         from: { kind: "player", playerId: player.id },
-        to: { kind: "discard" }
+        to: { kind: "discard" },
+        discardedCard: serializeCard(card, true)
       });
       room.discard.push(card);
       room.drawnCard = null;
@@ -882,7 +953,7 @@ io.on("connection", (socket) => {
         addLog(room, `${player.name} discarded ${cardLabel(card)} for a power.`);
       } else {
         addLog(room, `${player.name} discarded ${cardLabel(card)}.`);
-        advanceTurn(room);
+        endCurrentPlayerTurn(room);
       }
       reply?.({ ok: true });
       emitRoom(room);
@@ -981,7 +1052,7 @@ io.on("connection", (socket) => {
         }
       }
 
-      advanceTurn(room);
+      endCurrentPlayerTurn(room);
       reply?.({ ok: true });
       emitRoom(room);
     } catch (error) {
@@ -998,7 +1069,7 @@ io.on("connection", (socket) => {
         throw new Error("Queen power forces a swap after you look.");
       }
       addLog(room, `${player.name} skipped the power.`);
-      advanceTurn(room);
+      endCurrentPlayerTurn(room);
       reply?.({ ok: true });
       emitRoom(room);
     } catch (error) {
@@ -1023,7 +1094,117 @@ io.on("connection", (socket) => {
       });
       swapHandCards(player, room.pendingPower.ownIndex, target, room.pendingPower.targetIndex);
       addLog(room, `${player.name} chose to swap with ${target.name}.`);
-      advanceTurn(room);
+      endCurrentPlayerTurn(room);
+      reply?.({ ok: true });
+      emitRoom(room);
+    } catch (error) {
+      reply?.({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on("matchCard", ({ roomCode, playerId, targetPlayerId, index }, reply) => {
+    try {
+      const room = getRoomOrThrow(roomCode);
+      if (room.status !== "playing") throw new Error("The round is not in progress.");
+
+      const player = getPlayer(room, playerId);
+      if (!player) throw new Error("Player not found.");
+
+      const targetPlayer = getPlayer(room, targetPlayerId);
+      if (!targetPlayer) throw new Error("Target player not found.");
+
+      const card = targetPlayer.hand[index];
+      if (!card) throw new Error("Card not found at that index.");
+
+      const discardTop = room.discard.at(-1);
+      if (!discardTop) throw new Error("The discard pile is empty.");
+
+      // Verify rank equality for Cabo card matching
+      if (card.rank !== discardTop.rank) {
+        // MATCH PENALTY: drawing player receives 1 card from deck
+        ensureDeck(room);
+        const penaltyCard = room.deck.pop();
+        if (penaltyCard) {
+          penaltyCard.knownTo = [];
+          player.hand.push(penaltyCard);
+          addLog(room, `${player.name} tried to match incorrectly and got a penalty card.`);
+
+          emitAnimation(room, {
+            type: "draw",
+            from: { kind: "deck" },
+            to: { kind: "player", playerId: player.id }
+          });
+        }
+        reply?.({ ok: false, error: "Incorrect match! Penalty card added." });
+        emitRoom(room);
+        return;
+      }
+
+      // MATCH SUCCESS: discard target card
+      targetPlayer.hand.splice(index, 1);
+      room.discard.push(card);
+
+      if (playerId === targetPlayerId) {
+        // Player matched their own card
+        addLog(room, `${player.name} matched their own ${cardLabel(card)} and removed a card slot.`);
+        
+        emitAnimation(room, {
+          type: "replace",
+          playerId: player.id,
+          handIndex: index,
+          from: { kind: "hand", playerId: player.id, index },
+          to: { kind: "discard" },
+          discard: { kind: "discard" },
+          discardedCard: serializeCard(card, true)
+        });
+      } else {
+        // Player matched opponent's card (steal)
+        const penaltyCards = [];
+        ensureDeck(room);
+        const c1 = room.deck.pop();
+        if (c1) {
+          c1.knownTo = [];
+          targetPlayer.hand.push(c1);
+          penaltyCards.push(c1);
+        }
+        ensureDeck(room);
+        const c2 = room.deck.pop();
+        if (c2) {
+          c2.knownTo = [];
+          targetPlayer.hand.push(c2);
+          penaltyCards.push(c2);
+        }
+
+        addLog(room, `${player.name} matched ${targetPlayer.name}'s ${cardLabel(card)}! ${targetPlayer.name} got 2 penalty cards.`);
+
+        // Discard animation
+        emitAnimation(room, {
+          type: "replace",
+          playerId: targetPlayer.id,
+          handIndex: index,
+          from: { kind: "hand", playerId: targetPlayer.id, index },
+          to: { kind: "discard" },
+          discard: { kind: "discard" },
+          discardedCard: serializeCard(card, true)
+        });
+
+        // Deal animations
+        if (c1) {
+          emitAnimation(room, {
+            type: "draw",
+            from: { kind: "deck" },
+            to: { kind: "player", playerId: targetPlayer.id }
+          });
+        }
+        if (c2) {
+          emitAnimation(room, {
+            type: "draw",
+            from: { kind: "deck" },
+            to: { kind: "player", playerId: targetPlayer.id }
+          });
+        }
+      }
+
       reply?.({ ok: true });
       emitRoom(room);
     } catch (error) {
@@ -1035,11 +1216,26 @@ io.on("connection", (socket) => {
     try {
       const room = getRoomOrThrow(roomCode);
       const player = requireTurn(room, playerId);
-      if (room.turnPhase !== "draw") throw new Error("Call Cabo before drawing.");
+      if (room.turnPhase !== "draw" && room.turnPhase !== "turnEnd") {
+        throw new Error("You can only call Cabo at the start or end of your turn.");
+      }
       if (room.caboCalledBy) throw new Error("Cabo has already been called.");
       room.caboCalledBy = playerId;
       room.finalTurnsRemaining = activePlayers(room).length - 1;
       addLog(room, `${player.name} called Cabo. Everyone else gets one turn.`);
+      advanceTurn(room);
+      reply?.({ ok: true });
+      emitRoom(room);
+    } catch (error) {
+      reply?.({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on("endTurn", ({ roomCode, playerId }, reply) => {
+    try {
+      const room = getRoomOrThrow(roomCode);
+      const player = requireTurn(room, playerId);
+      if (room.turnPhase !== "turnEnd") throw new Error("You cannot end your turn now.");
       advanceTurn(room);
       reply?.({ ok: true });
       emitRoom(room);

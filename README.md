@@ -13,6 +13,15 @@ Open `http://localhost:3000`, create a room, and share the room code.
 
 For friends outside your machine, host this server somewhere public or expose port `3000` with a tunnel/reverse proxy.
 
+## One-command start/stop
+
+```bash
+./start.sh
+./stop.sh
+```
+
+`start.sh` runs the server in the background, writes `.cabo-server.pid` and `.cabo-server.log`, and opens `http://localhost:3000` in your browser. Set `PORT=4000 ./start.sh` to use another port, or `CABO_OPEN_BROWSER=0 ./start.sh` to skip opening the browser.
+
 ## Rules variant
 
 - 2 to 6 players.

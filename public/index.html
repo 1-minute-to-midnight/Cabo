@@ -10,6 +10,18 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
+    <div id="peekTimerContainer"></div>
+    <svg id="trailSvg">
+      <defs>
+        <!-- Arrowhead markers -->
+        <marker id="arrow-inward" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 Z" fill="#00f3ff" />
+        </marker>
+        <marker id="arrow-outward" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 Z" fill="#ffaa00" />
+        </marker>
+      </defs>
+    </svg>
     <main class="shell">
       <section class="topbar" aria-label="Room controls">
         <div>
@@ -34,19 +46,25 @@
 
       <section class="table" aria-label="Cabo table">
         <div class="draw-zone">
-          <button class="pile deck" id="deckBtn" type="button">
-            <span class="pile-mark">CABO</span>
-            <strong id="deckCount">0</strong>
-          </button>
-          <button class="pile discard" id="discardBtn" type="button">
-            <span>Discard</span>
-            <strong id="discardTop">--</strong>
-          </button>
+          <div class="deck-container">
+            <span class="deck-label">DRAW PILE</span>
+            <button class="card hidden-card" id="deckBtn" type="button">
+              <span class="deck-count" id="deckCount">0</span>
+            </button>
+          </div>
+          <div class="discard-container">
+            <span class="discard-label">DISCARD</span>
+            <button class="card discard-card" id="discardBtn" type="button">
+              <span class="card-rank">--</span>
+              <span class="card-suit"></span>
+            </button>
+          </div>
           <div class="drawn-card" id="drawnCard"></div>
           <div class="turn-actions">
             <button id="discardDrawnBtn" type="button">Discard</button>
             <button id="swapPowerBtn" type="button">Swap</button>
             <button id="caboBtn" type="button">Call Cabo</button>
+            <button id="endTurnBtn" type="button" class="hidden">End Turn</button>
             <button id="skipPowerBtn" type="button">Skip</button>
           </div>
         </div>
@@ -69,6 +87,43 @@
         </section>
       </aside>
     </main>
+
+    <!-- End Round Scoreboard Modal -->
+    <div id="endRoundModal" class="modal-overlay hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <p class="modal-subtitle">Round Details</p>
+          <h2 id="modalTitle">Ada won the round!</h2>
+        </div>
+        <div class="modal-body">
+          <table class="scoreboard-table">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Score</th>
+                <th>Final Hand</th>
+              </tr>
+            </thead>
+            <tbody id="scoreboardBody">
+              <!-- Dynamically populated by app.js -->
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button id="modalActionBtn" type="button">Start Next Round</button>
+          <button id="modalCloseBtn" type="button" class="secondary">Close</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Cabo Call Overlay -->
+    <div id="caboOverlay" class="cabo-overlay hidden">
+      <div class="cabo-banner">
+        <span class="cabo-banner-subtitle">ROUND END TRIGGERS</span>
+        <h1 id="caboBannerTitle">ADA CALLED CABO!</h1>
+        <span class="cabo-banner-footer">Everyone else gets one final turn. Click to dismiss.</span>
+      </div>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="/app.js" type="module"></script>
