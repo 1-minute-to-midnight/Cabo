@@ -244,9 +244,9 @@ function render() {
   els.skipPowerBtn.disabled = !canAct() || state.turnPhase !== "power"
     || (state.pendingPower?.type === "forcedLookSwap" && state.pendingPower?.stage === "chooseOwn");
 
-  if (canAct() && state.turnPhase === "turnEnd") {
+  if (canAct()) {
     els.endTurnBtn.classList.remove("hidden");
-    els.endTurnBtn.disabled = false;
+    els.endTurnBtn.disabled = state.turnPhase !== "turnEnd";
   } else {
     els.endTurnBtn.classList.add("hidden");
     els.endTurnBtn.disabled = true;
