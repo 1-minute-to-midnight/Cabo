@@ -268,6 +268,43 @@ button {
   box-shadow: 0 16px 38px rgba(214, 166, 77, 0.3);
 }
 
+.peek-timer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(214, 166, 77, 0.55);
+  border-radius: 6px;
+  color: var(--paper);
+  background: rgba(24, 17, 13, 0.42);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+}
+
+.peek-timer strong {
+  color: var(--gold);
+}
+
+.peek-timer-track {
+  grid-column: 1 / -1;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 248, 234, 0.18);
+}
+
+.peek-timer-track i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gold);
+  transform-origin: 0 50%;
+  transition: transform 100ms linear;
+}
+
 .seat-0 {
   grid-column: 2;
   grid-row: 3;

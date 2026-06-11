@@ -42,9 +42,11 @@ let selected = {
 };
 let initialPeekSelection = [];
 let tempReveals = new Map();
+let peekTimer = null;
 let animationUntil = 0;
 let pendingState = null;
 let pendingRenderTimer = null;
+let countdownTimer = null;
 
 els.nameInput.value = identity.name;
 els.roomInput.value = identity.roomCode;
@@ -161,7 +163,8 @@ function render() {
         ? powerText(state.pendingPower)
         : `${current?.name || "Someone"} ${current?.id === state.you ? "is up" : "is taking a turn"}.`;
   const cabo = caboCaller ? ` Cabo was called by ${caboCaller.name}.` : "";
-  els.statusText.textContent = `${phase}${cabo}`;
+  const timerText = peekTimer ? ` Memorize: ${peekTimer.remaining.toFixed(1)}s.` : "";
+  els.statusText.textContent = `${phase}${cabo}${timerText}`;
 
   els.players.innerHTML = state.players.map((player, playerIndex) => {
     const isCurrent = player.id === state.currentPlayerId;
@@ -188,6 +191,13 @@ function render() {
     const drawn = state.drawnCard && player.id === state.you
       ? `<div class="drawn-slot">${cardHtml(state.drawnCard, "drawn-in-hand")}</div>`
       : "";
+    const timer = peekTimer && player.id === state.you
+      ? `<div class="peek-timer" aria-live="polite">
+          <span>Memorize</span>
+          <strong>${peekTimer.remaining.toFixed(1)}</strong>
+          <div class="peek-timer-track"><i style="transform: scaleX(${peekTimer.progress})"></i></div>
+        </div>`
+      : "";
     return `
       <article class="player seat-${playerIndex} ${isCurrent ? "current" : ""} ${isWinner ? "winner" : ""}" data-player-id="${player.id}">
         <div class="player-head">
@@ -195,6 +205,7 @@ function render() {
           <span class="badges">${player.isHost ? '<span class="badge">Host</span>' : ""}${botBadge}${score}</span>
         </div>
         <div class="hand">${hand}</div>
+        ${timer}
         ${drawn}
       </article>
     `;
@@ -343,6 +354,28 @@ function revealKey(ownerId, index) {
   return `${ownerId}:${index}`;
 }
 
+function startPeekCountdown(duration) {
+  const total = duration || 3600;
+  const endsAt = Date.now() + total;
+  window.clearInterval(countdownTimer);
+  peekTimer = { remaining: total / 1000, progress: 1 };
+  render();
+  countdownTimer = window.setInterval(() => {
+    const remainingMs = Math.max(0, endsAt - Date.now());
+    peekTimer = {
+      remaining: remainingMs / 1000,
+      progress: total ? remainingMs / total : 0
+    };
+    render();
+    if (remainingMs <= 0) {
+      window.clearInterval(countdownTimer);
+      countdownTimer = null;
+      peekTimer = null;
+      render();
+    }
+  }, 100);
+}
+
 function endpointElement(endpoint) {
   if (!endpoint) return null;
   if (endpoint.kind === "deck") return els.deckBtn;
@@ -443,10 +476,11 @@ socket.on("state", (nextState) => {
   render();
 });
 
-socket.on("revealCards", ({ cards, duration }) => {
+socket.on("revealCards", ({ cards, duration, reason }) => {
   for (const item of cards || []) {
     tempReveals.set(revealKey(item.ownerId, item.index), item.card);
   }
+  if (reason === "initialPeek") startPeekCountdown(duration || 3600);
   render();
   window.setTimeout(() => {
     for (const item of cards || []) {
