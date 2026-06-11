@@ -16,6 +16,7 @@ const POWER_LABELS = {
 };
 const BOT_NAMES = ["Ada", "Babbage", "Cardsharp", "Noor", "Vega"];
 const BOT_TURN_DELAY_MS = 850;
+const REVEAL_MS = 4200;
 
 const app = express();
 const server = http.createServer(app);
@@ -95,6 +96,21 @@ function currentPlayer(room) {
   return activePlayers(room)[room.turnIndex] || null;
 }
 
+function connectedHumans(room) {
+  return room.players.filter((player) => !player.left && !player.isBot && player.socketId);
+}
+
+function allInitialPeeksDone(room) {
+  return activePlayers(room).every((player) => player.isBot || room.initialPeekDone?.[player.id]);
+}
+
+function beginTurnsIfReady(room) {
+  if (room.status !== "peeking" || !allInitialPeeksDone(room)) return;
+  room.status = "playing";
+  room.turnPhase = "draw";
+  addLog(room, "Everyone has peeked. The round is live.");
+}
+
 function advanceTurn(room) {
   const players = activePlayers(room);
   if (!players.length) return;
@@ -127,6 +143,25 @@ function scheduleBotTurn(room) {
     room.botTimer = null;
     playBotTurn(room.code);
   }, BOT_TURN_DELAY_MS);
+}
+
+function emitReveal(player, cards, reason = "peek") {
+  if (!player.socketId) return;
+  io.to(player.socketId).emit("revealCards", {
+    reason,
+    duration: REVEAL_MS,
+    cards: cards.map(({ ownerId, index, card }) => ({
+      ownerId,
+      index,
+      card: serializeCard(card, true)
+    }))
+  });
+}
+
+function emitAnimation(room, animation) {
+  for (const player of connectedHumans(room)) {
+    io.to(player.socketId).emit("animation", animation);
+  }
 }
 
 function ensureDeck(room) {
@@ -167,25 +202,30 @@ function startRound(room) {
     throw new Error("Cabo needs 2 to 6 players.");
   }
 
-  room.status = "playing";
+  room.status = "peeking";
   room.deck = makeDeck();
   room.discard = [];
   room.turnIndex = 0;
-  room.turnPhase = "draw";
+  room.turnPhase = "initialPeek";
   room.drawnCard = null;
   room.pendingPower = null;
   room.caboCalledBy = null;
   room.finalTurnsRemaining = null;
   room.winnerIds = [];
-  room.log = ["Round started. Everyone knows only their first two cards."];
+  room.initialPeekDone = {};
+  room.log = ["Round started. Choose any two of your cards to peek at, then remember them."];
 
   for (const player of players) {
     player.hand = [];
     player.score = null;
     for (let index = 0; index < 4; index += 1) {
       const card = room.deck.pop();
-      if (index < 2) card.knownTo = [player.id];
       player.hand.push(card);
+    }
+    if (player.isBot) {
+      player.hand[0].knownTo = [player.id];
+      player.hand[1].knownTo = [player.id];
+      room.initialPeekDone[player.id] = true;
     }
   }
 
@@ -252,8 +292,9 @@ function publicState(room, viewerId) {
     status: room.status,
     hostId: room.hostId,
     you: viewerId,
-    canAddBot: room.status !== "playing" && room.hostId === viewerId && activePlayers(room).length < 6,
-    canStart: room.status !== "playing" && activePlayers(room).length >= 2 && room.hostId === viewerId,
+    canAddBot: (room.status === "waiting" || room.status === "ended") && room.hostId === viewerId && activePlayers(room).length < 6,
+    canStart: room.status === "waiting" && activePlayers(room).length >= 2 && room.hostId === viewerId,
+    initialPeekNeeded: room.status === "peeking" && !viewer?.isBot && !room.initialPeekDone?.[viewerId],
     deckCount: room.deck.length,
     discardTop: serializeCard(room.discard.at(-1), true),
     drawnCard: viewer?.id === currentPlayer(room)?.id ? serializeCard(room.drawnCard, true) : null,
@@ -281,7 +322,7 @@ function publicState(room, viewerId) {
       score: ended ? player.score : null,
       cardCount: player.hand.length,
       isHost: player.id === room.hostId,
-      hand: player.hand.map((card) => serializeCard(card, ended || card.knownTo.includes(viewerId)))
+      hand: player.hand.map((card) => serializeCard(card, ended))
     })),
     log: room.log.slice(0, 10)
   };
@@ -416,6 +457,14 @@ function shouldCallCabo(room, bot) {
 }
 
 function replaceWithDrawn(room, bot, handIndex, logPrefix = "") {
+  emitAnimation(room, {
+    type: "replace",
+    playerId: bot.id,
+    handIndex,
+    from: { kind: "player", playerId: bot.id },
+    to: { kind: "hand", playerId: bot.id, index: handIndex },
+    discard: { kind: "discard" }
+  });
   const outgoing = takeCardFromHand(bot, handIndex);
   bot.hand[handIndex] = room.drawnCard;
   bot.hand[handIndex].knownTo = Array.from(new Set([...(bot.hand[handIndex].knownTo || []), bot.id]));
@@ -426,6 +475,11 @@ function replaceWithDrawn(room, bot, handIndex, logPrefix = "") {
 
 function discardDrawnForBot(room, bot) {
   const card = room.drawnCard;
+  emitAnimation(room, {
+    type: "discard",
+    from: { kind: "player", playerId: bot.id },
+    to: { kind: "discard" }
+  });
   room.discard.push(card);
   room.drawnCard = null;
   const power = isPowerCard(card);
@@ -480,10 +534,12 @@ function useBotPower(room, bot) {
       advanceTurn(room);
       return;
     }
-    const ownCard = takeCardFromHand(bot, ownWorst.index);
-    const targetCard = takeCardFromHand(target.player, target.index);
-    bot.hand[ownWorst.index] = targetCard;
-    target.player.hand[target.index] = ownCard;
+    emitAnimation(room, {
+      type: "swap",
+      from: { kind: "hand", playerId: bot.id, index: ownWorst.index },
+      to: { kind: "hand", playerId: target.player.id, index: target.index }
+    });
+    swapHandCards(bot, ownWorst.index, target.player, target.index);
     addLog(room, `${bot.name} made a blind swap with ${target.player.name}.`);
     advanceTurn(room);
     return;
@@ -504,9 +560,12 @@ function useBotPower(room, bot) {
     }
     const targetCard = takeCardFromHand(targetPlayer, targetIndex);
     targetCard.knownTo = Array.from(new Set([...targetCard.knownTo, bot.id]));
-    const ownCard = takeCardFromHand(bot, ownWorst.index);
-    bot.hand[ownWorst.index] = targetCard;
-    targetPlayer.hand[targetIndex] = ownCard;
+    emitAnimation(room, {
+      type: "swap",
+      from: { kind: "hand", playerId: bot.id, index: ownWorst.index },
+      to: { kind: "hand", playerId: targetPlayer.id, index: targetIndex }
+    });
+    swapHandCards(bot, ownWorst.index, targetPlayer, targetIndex);
     addLog(room, `${bot.name} looked, then had to swap with ${targetPlayer.name}.`);
     advanceTurn(room);
     return;
@@ -527,10 +586,12 @@ function useBotPower(room, bot) {
       advanceTurn(room);
       return;
     }
-    const ownCard = takeCardFromHand(bot, ownWorst.index);
-    const targetCard = takeCardFromHand(opponentBest.player, opponentBest.index);
-    bot.hand[ownWorst.index] = targetCard;
-    opponentBest.player.hand[opponentBest.index] = ownCard;
+    emitAnimation(room, {
+      type: "swap",
+      from: { kind: "hand", playerId: bot.id, index: ownWorst.index },
+      to: { kind: "hand", playerId: opponentBest.player.id, index: opponentBest.index }
+    });
+    swapHandCards(bot, ownWorst.index, opponentBest.player, opponentBest.index);
     addLog(room, `${bot.name} looked at both cards and swapped with ${opponentBest.player.name}.`);
     advanceTurn(room);
   }
@@ -556,6 +617,11 @@ function playBotTurn(roomCode) {
       const discard = room.discard.at(-1);
       const worst = worstOwnCard(room, bot);
       if (discard && worst && discard.value < worst.value - 0.35) {
+        emitAnimation(room, {
+          type: "draw",
+          from: { kind: "discard" },
+          to: { kind: "player", playerId: bot.id }
+        });
         room.drawnCard = room.discard.pop();
         room.drawnCard.knownTo = Array.from(new Set([...room.drawnCard.knownTo, bot.id]));
         room.turnPhase = "replace";
@@ -567,6 +633,11 @@ function playBotTurn(roomCode) {
         if (!card) {
           finishRound(room);
         } else {
+          emitAnimation(room, {
+            type: "draw",
+            from: { kind: "deck" },
+            to: { kind: "player", playerId: bot.id }
+          });
           card.knownTo = [bot.id];
           room.drawnCard = card;
           room.turnPhase = "decide";
@@ -637,7 +708,7 @@ io.on("connection", (socket) => {
       const room = getRoomOrThrow(roomCode);
       let player = room.players.find((candidate) => candidate.token && candidate.token === token);
       if (!player) {
-        if (room.status === "playing") throw new Error("That room is already playing.");
+        if (room.status !== "waiting" && room.status !== "ended") throw new Error("That room is already in progress.");
         if (activePlayers(room).length >= 6) throw new Error("That room is full.");
         player = {
           id: makeId("p_"),
@@ -679,11 +750,37 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("initialPeek", ({ roomCode, playerId, indexes }, reply) => {
+    try {
+      const room = getRoomOrThrow(roomCode);
+      const player = getPlayer(room, playerId);
+      if (!player || player.isBot) throw new Error("Player not found.");
+      if (room.status !== "peeking") throw new Error("Initial peeks are not active.");
+      if (room.initialPeekDone?.[playerId]) throw new Error("You already peeked.");
+      const chosen = [...new Set((indexes || []).map(Number))];
+      if (chosen.length !== 2 || chosen.some((index) => index < 0 || index > 3)) {
+        throw new Error("Choose exactly two cards.");
+      }
+      for (const index of chosen) {
+        const card = takeCardFromHand(player, index);
+        card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+      }
+      room.initialPeekDone[playerId] = true;
+      emitReveal(player, chosen.map((index) => ({ ownerId: player.id, index, card: player.hand[index] })), "initialPeek");
+      addLog(room, `${player.name} peeked at two starting cards.`);
+      beginTurnsIfReady(room);
+      reply?.({ ok: true });
+      emitRoom(room);
+    } catch (error) {
+      reply?.({ ok: false, error: error.message });
+    }
+  });
+
   socket.on("addBot", ({ roomCode, playerId }, reply) => {
     try {
       const room = getRoomOrThrow(roomCode);
       if (room.hostId !== playerId) throw new Error("Only the host can add AI players.");
-      if (room.status === "playing") throw new Error("Add AI players between rounds.");
+      if (room.status !== "waiting" && room.status !== "ended") throw new Error("Add AI players between rounds.");
       if (activePlayers(room).length >= 6) throw new Error("That room is full.");
       const bot = makeBot(room);
       room.players.push(bot);
@@ -704,6 +801,11 @@ io.on("connection", (socket) => {
         ensureDeck(room);
         const card = room.deck.pop();
         if (!card) throw new Error("The deck is empty.");
+        emitAnimation(room, {
+          type: "draw",
+          from: { kind: "deck" },
+          to: { kind: "player", playerId: player.id }
+        });
         card.knownTo = [player.id];
         room.drawnCard = card;
         room.turnPhase = "decide";
@@ -711,6 +813,11 @@ io.on("connection", (socket) => {
       } else if (source === "discard") {
         if (!room.discard.length) throw new Error("The discard pile is empty.");
         const card = room.discard.pop();
+        emitAnimation(room, {
+          type: "draw",
+          from: { kind: "discard" },
+          to: { kind: "player", playerId: player.id }
+        });
         card.knownTo = [player.id];
         room.drawnCard = card;
         room.turnPhase = "replace";
@@ -733,6 +840,14 @@ io.on("connection", (socket) => {
         throw new Error("There is no drawn card to place.");
       }
       const outgoing = takeCardFromHand(player, handIndex);
+      emitAnimation(room, {
+        type: "replace",
+        playerId: player.id,
+        handIndex,
+        from: { kind: "player", playerId: player.id },
+        to: { kind: "hand", playerId: player.id, index: handIndex },
+        discard: { kind: "discard" }
+      });
       player.hand[handIndex] = room.drawnCard;
       player.hand[handIndex].knownTo = Array.from(new Set([...(player.hand[handIndex].knownTo || []), player.id]));
       room.discard.push(outgoing);
@@ -753,6 +868,11 @@ io.on("connection", (socket) => {
         throw new Error("You can only discard a card drawn from the deck.");
       }
       const card = room.drawnCard;
+      emitAnimation(room, {
+        type: "discard",
+        from: { kind: "player", playerId: player.id },
+        to: { kind: "discard" }
+      });
       room.discard.push(card);
       room.drawnCard = null;
       const power = isPowerCard(card);
@@ -780,6 +900,7 @@ io.on("connection", (socket) => {
       if (room.pendingPower.type === "ownPeek") {
         const card = takeCardFromHand(player, ownIndex);
         card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+        emitReveal(player, [{ ownerId: player.id, index: ownIndex, card }], "peek");
         addLog(room, `${player.name} peeked at one of their cards.`);
       }
 
@@ -788,12 +909,18 @@ io.on("connection", (socket) => {
         if (!target || target.id === playerId) throw new Error("Choose an opponent.");
         const card = takeCardFromHand(target, targetIndex);
         card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+        emitReveal(player, [{ ownerId: target.id, index: targetIndex, card }], "peek");
         addLog(room, `${player.name} peeked at ${target.name}'s card.`);
       }
 
       if (room.pendingPower.type === "blindSwap") {
         const target = getPlayer(room, targetPlayerId);
         if (!target || target.id === playerId) throw new Error("Choose an opponent.");
+        emitAnimation(room, {
+          type: "swap",
+          from: { kind: "hand", playerId: player.id, index: ownIndex },
+          to: { kind: "hand", playerId: target.id, index: targetIndex }
+        });
         swapHandCards(player, ownIndex, target, targetIndex);
         addLog(room, `${player.name} made a blind swap with ${target.name}.`);
       }
@@ -804,6 +931,7 @@ io.on("connection", (socket) => {
           if (!target || target.id === playerId) throw new Error("Choose an opponent.");
           const card = takeCardFromHand(target, targetIndex);
           card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+          emitReveal(player, [{ ownerId: target.id, index: targetIndex, card }], "peek");
           room.pendingPower.targetPlayerId = target.id;
           room.pendingPower.targetIndex = targetIndex;
           room.pendingPower.stage = "chooseOwn";
@@ -815,6 +943,11 @@ io.on("connection", (socket) => {
 
         const target = getPlayer(room, room.pendingPower.targetPlayerId);
         if (!target) throw new Error("That opponent is gone.");
+        emitAnimation(room, {
+          type: "swap",
+          from: { kind: "hand", playerId: player.id, index: ownIndex },
+          to: { kind: "hand", playerId: target.id, index: room.pendingPower.targetIndex }
+        });
         swapHandCards(player, ownIndex, target, room.pendingPower.targetIndex);
         addLog(room, `${player.name} completed the forced swap with ${target.name}.`);
       }
@@ -823,6 +956,7 @@ io.on("connection", (socket) => {
         if (room.pendingPower.stage === "choose" || room.pendingPower.ownIndex === undefined) {
           const card = takeCardFromHand(player, ownIndex);
           card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+          emitReveal(player, [{ ownerId: player.id, index: ownIndex, card }], "peek");
           room.pendingPower.ownIndex = ownIndex;
           room.pendingPower.stage = "chooseTarget";
           addLog(room, `${player.name} looked at one of their cards.`);
@@ -836,6 +970,7 @@ io.on("connection", (socket) => {
           if (!target || target.id === playerId) throw new Error("Choose an opponent.");
           const card = takeCardFromHand(target, targetIndex);
           card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+          emitReveal(player, [{ ownerId: target.id, index: targetIndex, card }], "peek");
           room.pendingPower.targetPlayerId = target.id;
           room.pendingPower.targetIndex = targetIndex;
           room.pendingPower.stage = "chooseSwap";
@@ -881,6 +1016,11 @@ io.on("connection", (socket) => {
       }
       const target = getPlayer(room, room.pendingPower.targetPlayerId);
       if (!target) throw new Error("That opponent is gone.");
+      emitAnimation(room, {
+        type: "swap",
+        from: { kind: "hand", playerId: player.id, index: room.pendingPower.ownIndex },
+        to: { kind: "hand", playerId: target.id, index: room.pendingPower.targetIndex }
+      });
       swapHandCards(player, room.pendingPower.ownIndex, target, room.pendingPower.targetIndex);
       addLog(room, `${player.name} chose to swap with ${target.name}.`);
       advanceTurn(room);
