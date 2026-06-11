@@ -352,22 +352,55 @@ button.secondary:hover:not(:disabled) {
 .bottom-left-pip { left: 24%; top: 84%; transform: translate(-50%, -50%) rotate(180deg); }
 .bottom-right-pip { left: 76%; top: 84%; transform: translate(-50%, -50%) rotate(180deg); }
 
-.face-art {
-  width: 82%;
-  height: 82%;
+.court-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr 2px 1fr;
+  width: 78%;
+  height: 88%;
+  overflow: hidden;
+  border-radius: 6px;
   filter: drop-shadow(0 2px 0 rgba(255, 255, 255, 0.34)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.14));
 }
 
-.jack-art {
-  color: #3b6e8c;
+.court-half {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
 }
 
-.queen-art {
-  color: #a45a8f;
+.court-half img {
+  position: absolute;
+  left: 50%;
+  width: 118%;
+  height: auto;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
 }
 
-.king-art {
-  color: #d6a64d;
+.court-top img {
+  top: 52%;
+  transform: translate(-50%, -50%);
+}
+
+.court-bottom img {
+  bottom: 52%;
+  transform: translate(-50%, 50%) rotate(180deg);
+}
+
+.court-divider {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(214, 166, 77, 0.9), transparent);
+}
+
+.jack-art .court-divider {
+  background: linear-gradient(90deg, transparent, rgba(59, 110, 140, 0.9), transparent);
+}
+
+.queen-art .court-divider {
+  background: linear-gradient(90deg, transparent, rgba(164, 90, 143, 0.9), transparent);
 }
 
 .red-suit,

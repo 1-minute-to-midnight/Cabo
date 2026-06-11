@@ -146,13 +146,13 @@ function cardCenterHtml(card) {
   const suitSym = suitSymbol(card.suit);
   
   if (card.rank === "J") {
-    return `<img class="face-art jack-art" src="/assets/cards/jack.png" alt="" draggable="false">`;
+    return faceCardHtml("jack");
   }
   if (card.rank === "Q") {
-    return `<img class="face-art queen-art" src="/assets/cards/queen.png" alt="" draggable="false">`;
+    return faceCardHtml("queen");
   }
   if (card.rank === "K") {
-    return `<img class="face-art king-art" src="/assets/cards/king.png" alt="" draggable="false">`;
+    return faceCardHtml("king");
   }
 
   if (card.rank === "A") {
@@ -175,6 +175,20 @@ function cardCenterHtml(card) {
     .map((pos) => `<span class="pip ${colorClass} ${pos}">${suitSym}</span>`)
     .join("");
   return `<div class="pip-grid pip-grid-${count}">${pips}</div>`;
+}
+
+function faceCardHtml(face) {
+  return `
+    <div class="court-card ${face}-art">
+      <span class="court-half court-top">
+        <img src="/assets/cards/${face}.png" alt="" draggable="false">
+      </span>
+      <span class="court-divider"></span>
+      <span class="court-half court-bottom">
+        <img src="/assets/cards/${face}.png" alt="" draggable="false">
+      </span>
+    </div>
+  `;
 }
 
 function suitSymbol(suit) {
