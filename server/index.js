@@ -16,6 +16,7 @@ const POWER_LABELS = {
 };
 const BOT_NAMES = ["Ada", "Babbage", "Cardsharp", "Noor", "Vega"];
 const BOT_TURN_DELAY_MS = 1600;
+const BOT_MATCH_DELAY_MS = 1350;
 const REVEAL_MS = 4200;
 
 const app = express();
@@ -152,6 +153,14 @@ function scheduleBotTurn(room) {
     room.botTimer = null;
     playBotTurn(room.code);
   }, BOT_TURN_DELAY_MS);
+}
+
+function scheduleBotMatch(room) {
+  if (room.botMatchTimer || room.status !== "playing" || !room.discard.at(-1)) return;
+  room.botMatchTimer = setTimeout(() => {
+    room.botMatchTimer = null;
+    playBotMatch(room.code);
+  }, BOT_MATCH_DELAY_MS);
 }
 
 function emitReveal(player, cards, reason = "peek") {
@@ -375,6 +384,7 @@ function emitRoom(room) {
     io.to(player.socketId).emit("state", publicState(room, player.id));
   }
   scheduleBotTurn(room);
+  scheduleBotMatch(room);
 }
 
 function addLog(room, message) {
@@ -488,19 +498,45 @@ function opponentForPeek(room, bot) {
     .sort((a, b) => a.unknownIndexes.length - b.unknownIndexes.length)[0] || null;
 }
 
+function knownMatchCandidates(room, bot) {
+  const discardTop = room.discard.at(-1);
+  if (!discardTop) return [];
+
+  const candidates = [];
+  for (const player of activePlayers(room)) {
+    player.hand.forEach((card, index) => {
+      if (card.rank !== discardTop.rank || !card.knownTo.includes(bot.id)) return;
+      if (player.id === bot.id) {
+        const benefit = card.value;
+        if (benefit > 1 || bot.hand.length > 4) {
+          candidates.push({ type: "own", player, index, card, benefit });
+        }
+        return;
+      }
+
+      const penaltyEstimate = unknownAverageFor(room, bot) * 2;
+      const benefit = penaltyEstimate - card.value;
+      if (benefit > 1.25) {
+        candidates.push({ type: "opponent", player, index, card, benefit });
+      }
+    });
+  }
+
+  return candidates.sort((a, b) => b.benefit - a.benefit || (a.type === "own" ? -1 : 1));
+}
+
 function shouldCallCabo(room, bot) {
   if (room.caboCalledBy || room.turnPhase !== "draw") return false;
   const estimates = ownCardEstimates(room, bot);
   const knownCount = estimates.filter((card) => card.known).length;
   const estimate = estimates.reduce((sum, card) => sum + card.value, 0);
-  const players = activePlayers(room).length;
-  const threshold = players <= 2 ? 10 : 9;
   const handSize = bot.hand.length;
 
   if (handSize === 0) return true;
 
-  if (knownCount === handSize && estimate <= threshold + (4 - handSize) * 2) return true;
-  if (knownCount >= Math.min(3, handSize) && estimate <= threshold) return true;
+  if (estimate > 7) return false;
+  if (knownCount === handSize) return true;
+  if (knownCount >= Math.min(3, handSize) && estimate <= 6.25) return true;
 
   return false;
 }
@@ -647,6 +683,106 @@ function useBotPower(room, bot) {
   }
 }
 
+function performMatchCard(room, player, targetPlayer, index) {
+  const card = targetPlayer.hand[index];
+  if (!card) throw new Error("Card not found at that index.");
+
+  const discardTop = room.discard.at(-1);
+  if (!discardTop) throw new Error("The discard pile is empty.");
+
+  if (card.rank !== discardTop.rank) {
+    ensureDeck(room);
+    const penaltyCard = room.deck.pop();
+    if (penaltyCard) {
+      penaltyCard.knownTo = [];
+      player.hand.push(penaltyCard);
+      addLog(room, `${player.name} tried to match incorrectly and got a penalty card.`);
+      emitAnimation(room, {
+        type: "draw",
+        from: { kind: "deck" },
+        to: { kind: "player", playerId: player.id }
+      });
+    }
+    return { ok: false, error: "Incorrect match! Penalty card added." };
+  }
+
+  targetPlayer.hand.splice(index, 1);
+  room.discard.push(card);
+
+  if (player.id === targetPlayer.id) {
+    addLog(room, `${player.name} matched their own ${cardLabel(card)} and removed a card slot.`);
+    emitAnimation(room, {
+      type: "replace",
+      playerId: player.id,
+      handIndex: index,
+      from: { kind: "hand", playerId: player.id, index },
+      to: { kind: "discard" },
+      discard: { kind: "discard" },
+      discardedCard: serializeCard(card, true)
+    });
+    return { ok: true };
+  }
+
+  ensureDeck(room);
+  const c1 = room.deck.pop();
+  if (c1) {
+    c1.knownTo = [];
+    targetPlayer.hand.push(c1);
+  }
+  ensureDeck(room);
+  const c2 = room.deck.pop();
+  if (c2) {
+    c2.knownTo = [];
+    targetPlayer.hand.push(c2);
+  }
+
+  addLog(room, `${player.name} matched ${targetPlayer.name}'s known ${cardLabel(card)}! ${targetPlayer.name} got 2 penalty cards.`);
+  emitAnimation(room, {
+    type: "replace",
+    playerId: targetPlayer.id,
+    handIndex: index,
+    from: { kind: "hand", playerId: targetPlayer.id, index },
+    to: { kind: "discard" },
+    discard: { kind: "discard" },
+    discardedCard: serializeCard(card, true)
+  });
+
+  if (c1) {
+    emitAnimation(room, {
+      type: "draw",
+      from: { kind: "deck" },
+      to: { kind: "player", playerId: targetPlayer.id }
+    });
+  }
+  if (c2) {
+    emitAnimation(room, {
+      type: "draw",
+      from: { kind: "deck" },
+      to: { kind: "player", playerId: targetPlayer.id }
+    });
+  }
+
+  return { ok: true };
+}
+
+function playBotMatch(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room || room.status !== "playing") return false;
+  if (!room.discard.at(-1)) return false;
+
+  const bots = activePlayers(room).filter((player) => player.isBot);
+  const candidates = bots
+    .flatMap((bot) => knownMatchCandidates(room, bot).map((candidate) => ({ bot, ...candidate })))
+    .sort((a, b) => b.benefit - a.benefit);
+
+  const choice = candidates[0];
+  if (!choice) return false;
+
+  performMatchCard(room, choice.bot, choice.player, choice.index);
+  emitRoom(room);
+  return true;
+}
+
 function playBotTurn(roomCode) {
   const room = rooms.get(roomCode);
   if (!room || room.status !== "playing") return;
@@ -654,6 +790,13 @@ function playBotTurn(roomCode) {
   if (!bot?.isBot) return;
 
   try {
+    const turnMatch = knownMatchCandidates(room, bot)[0];
+    if (turnMatch) {
+      performMatchCard(room, bot, turnMatch.player, turnMatch.index);
+      emitRoom(room);
+      return;
+    }
+
     if (shouldCallCabo(room, bot)) {
       room.caboCalledBy = bot.id;
       room.finalTurnsRemaining = activePlayers(room).length - 1;
@@ -1117,97 +1260,12 @@ io.on("connection", (socket) => {
 
       const card = targetPlayer.hand[index];
       if (!card) throw new Error("Card not found at that index.");
-
-      const discardTop = room.discard.at(-1);
-      if (!discardTop) throw new Error("The discard pile is empty.");
-
-      // Verify rank equality for Cabo card matching
-      if (card.rank !== discardTop.rank) {
-        // MATCH PENALTY: drawing player receives 1 card from deck
-        ensureDeck(room);
-        const penaltyCard = room.deck.pop();
-        if (penaltyCard) {
-          penaltyCard.knownTo = [];
-          player.hand.push(penaltyCard);
-          addLog(room, `${player.name} tried to match incorrectly and got a penalty card.`);
-
-          emitAnimation(room, {
-            type: "draw",
-            from: { kind: "deck" },
-            to: { kind: "player", playerId: player.id }
-          });
-        }
-        reply?.({ ok: false, error: "Incorrect match! Penalty card added." });
-        emitRoom(room);
-        return;
+      if (playerId !== targetPlayerId && !card.knownTo.includes(playerId)) {
+        throw new Error("You can only match an opponent card you have seen.");
       }
 
-      // MATCH SUCCESS: discard target card
-      targetPlayer.hand.splice(index, 1);
-      room.discard.push(card);
-
-      if (playerId === targetPlayerId) {
-        // Player matched their own card
-        addLog(room, `${player.name} matched their own ${cardLabel(card)} and removed a card slot.`);
-        
-        emitAnimation(room, {
-          type: "replace",
-          playerId: player.id,
-          handIndex: index,
-          from: { kind: "hand", playerId: player.id, index },
-          to: { kind: "discard" },
-          discard: { kind: "discard" },
-          discardedCard: serializeCard(card, true)
-        });
-      } else {
-        // Player matched opponent's card (steal)
-        const penaltyCards = [];
-        ensureDeck(room);
-        const c1 = room.deck.pop();
-        if (c1) {
-          c1.knownTo = [];
-          targetPlayer.hand.push(c1);
-          penaltyCards.push(c1);
-        }
-        ensureDeck(room);
-        const c2 = room.deck.pop();
-        if (c2) {
-          c2.knownTo = [];
-          targetPlayer.hand.push(c2);
-          penaltyCards.push(c2);
-        }
-
-        addLog(room, `${player.name} matched ${targetPlayer.name}'s ${cardLabel(card)}! ${targetPlayer.name} got 2 penalty cards.`);
-
-        // Discard animation
-        emitAnimation(room, {
-          type: "replace",
-          playerId: targetPlayer.id,
-          handIndex: index,
-          from: { kind: "hand", playerId: targetPlayer.id, index },
-          to: { kind: "discard" },
-          discard: { kind: "discard" },
-          discardedCard: serializeCard(card, true)
-        });
-
-        // Deal animations
-        if (c1) {
-          emitAnimation(room, {
-            type: "draw",
-            from: { kind: "deck" },
-            to: { kind: "player", playerId: targetPlayer.id }
-          });
-        }
-        if (c2) {
-          emitAnimation(room, {
-            type: "draw",
-            from: { kind: "deck" },
-            to: { kind: "player", playerId: targetPlayer.id }
-          });
-        }
-      }
-
-      reply?.({ ok: true });
+      const result = performMatchCard(room, player, targetPlayer, index);
+      reply?.(result);
       emitRoom(room);
     } catch (error) {
       reply?.({ ok: false, error: error.message });
