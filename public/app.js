@@ -146,40 +146,13 @@ function cardCenterHtml(card) {
   const suitSym = suitSymbol(card.suit);
   
   if (card.rank === "J") {
-    return `
-      <svg class="face-art jack-art" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M15 14H49L44 51H20L15 14Z" fill="rgba(214, 166, 77, 0.08)" stroke="currentColor" stroke-width="2.4"/>
-        <path d="M18 15L24 7L32 15L40 7L46 15" stroke="var(--gold)" stroke-width="2.6" stroke-linejoin="round"/>
-        <path d="M25 27C27 24 30 24 32 28C34 24 37 24 39 27" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-        <path d="M24 39H40M31 27V40" stroke="var(--gold)" stroke-width="2.4" stroke-linecap="round"/>
-        <circle cx="24" cy="15" r="2.4" fill="var(--gold)"/>
-        <circle cx="40" cy="15" r="2.4" fill="var(--gold)"/>
-      </svg>
-    `;
+    return `<img class="face-art jack-art" src="/assets/cards/jack.png" alt="" draggable="false">`;
   }
   if (card.rank === "Q") {
-    return `
-      <svg class="face-art queen-art" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M14 48L19 21L28 34L32 14L36 34L45 21L50 48H14Z" fill="rgba(214, 166, 77, 0.08)" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
-        <circle cx="19" cy="21" r="3" fill="var(--gold)"/>
-        <circle cx="32" cy="14" r="3" fill="var(--gold)"/>
-        <circle cx="45" cy="21" r="3" fill="var(--gold)"/>
-        <path d="M24 39C28 43 36 43 40 39" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-        <path d="M27 29H28M36 29H37" stroke="var(--gold)" stroke-width="3.5" stroke-linecap="round"/>
-      </svg>
-    `;
+    return `<img class="face-art queen-art" src="/assets/cards/queen.png" alt="" draggable="false">`;
   }
   if (card.rank === "K") {
-    return `
-      <svg class="face-art king-art" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M11 45L16 17L26 30L32 12L38 30L48 17L53 45H11Z" fill="rgba(214, 166, 77, 0.1)" stroke="var(--gold)" stroke-width="2.6" stroke-linejoin="round"/>
-        <path d="M20 50H44" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-        <circle cx="25" cy="35" r="2.4" fill="currentColor"/>
-        <circle cx="39" cy="35" r="2.4" fill="currentColor"/>
-        <path d="M27 42C30 45 34 45 37 42" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-        <circle cx="32" cy="12" r="3" fill="var(--gold)"/>
-      </svg>
-    `;
+    return `<img class="face-art king-art" src="/assets/cards/king.png" alt="" draggable="false">`;
   }
 
   if (card.rank === "A") {

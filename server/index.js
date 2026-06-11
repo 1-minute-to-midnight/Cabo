@@ -258,7 +258,7 @@ function finishRound(room) {
   if (room.caboCalledBy) {
     const caller = getPlayer(room, room.caboCalledBy);
     if (caller) {
-      if (caller.score === lowScore) {
+      if (caller.score <= 7 && caller.score === lowScore) {
         // Caller has the lowest score: successful Cabo call (+1 TP)
         caller.tournamentPoints = (caller.tournamentPoints || 0) + 1;
         room.winnerIds = [caller.id];
@@ -267,7 +267,8 @@ function finishRound(room) {
         // Caller did not have the lowest score: failed Cabo call (-1 TP, nobody wins!)
         caller.tournamentPoints = (caller.tournamentPoints || 0) - 1;
         room.winnerIds = []; // Nobody wins the round
-        addLog(room, `${caller.name} called Cabo incorrectly and got -1 tournament point. Nobody wins the round.`);
+        const reason = caller.score > 7 ? `their hand was ${caller.score}, above 7` : "they did not have the lowest score";
+        addLog(room, `${caller.name} called Cabo incorrectly (${reason}) and got -1 tournament point. Nobody wins the round.`);
       }
     } else {
       room.winnerIds = defaultWinners.map((p) => p.id);
@@ -920,6 +921,7 @@ io.on("connection", (socket) => {
       });
       player.hand[handIndex] = room.drawnCard;
       player.hand[handIndex].knownTo = Array.from(new Set([...(player.hand[handIndex].knownTo || []), player.id]));
+      room.drawnCard = null;
       room.discard.push(outgoing);
       addLog(room, `${player.name} replaced a card and discarded ${cardLabel(outgoing)}.`);
       endCurrentPlayerTurn(room);
