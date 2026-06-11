@@ -10,7 +10,9 @@ const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 const POWER_LABELS = {
   ownPeek: "Peek at one of your cards",
   otherPeek: "Peek at one opponent card",
-  swap: "Swap one of your cards with an opponent card"
+  blindSwap: "Blind swap one of your cards with an opponent card",
+  forcedLookSwap: "Look at an opponent card, then swap it with one of yours",
+  optionalLookSwap: "Look at one of yours and one opponent card, then choose whether to swap"
 };
 const BOT_NAMES = ["Ada", "Babbage", "Cardsharp", "Noor", "Vega"];
 const BOT_TURN_DELAY_MS = 850;
@@ -39,7 +41,7 @@ function makeId(prefix = "") {
 function cardValue(rank, suit) {
   if (rank === "A") return 1;
   if (["J", "Q"].includes(rank)) return 10;
-  if (rank === "K") return suit === "hearts" || suit === "diamonds" ? 0 : 13;
+  if (rank === "K") return suit === "hearts" || suit === "diamonds" ? -1 : 13;
   return Number(rank);
 }
 
@@ -153,7 +155,9 @@ function isPowerCard(card) {
   if (!card) return null;
   if (card.rank === "7" || card.rank === "8") return "ownPeek";
   if (card.rank === "9" || card.rank === "10") return "otherPeek";
-  if (card.rank === "J" || card.rank === "Q") return "swap";
+  if (card.rank === "J") return "blindSwap";
+  if (card.rank === "Q") return "forcedLookSwap";
+  if (card.rank === "K" && (card.suit === "clubs" || card.suit === "spades")) return "optionalLookSwap";
   return null;
 }
 
@@ -173,7 +177,7 @@ function startRound(room) {
   room.caboCalledBy = null;
   room.finalTurnsRemaining = null;
   room.winnerIds = [];
-  room.log = ["Round started. Everyone knows their two left cards."];
+  room.log = ["Round started. Everyone knows only their first two cards."];
 
   for (const player of players) {
     player.hand = [];
@@ -221,6 +225,13 @@ function takeCardFromHand(player, index) {
   return card;
 }
 
+function swapHandCards(player, ownIndex, target, targetIndex) {
+  const ownCard = takeCardFromHand(player, ownIndex);
+  const targetCard = takeCardFromHand(target, targetIndex);
+  player.hand[ownIndex] = targetCard;
+  target.hand[targetIndex] = ownCard;
+}
+
 function serializeCard(card, visible) {
   if (!card) return null;
   if (!visible) return { id: card.id, hidden: true };
@@ -249,7 +260,15 @@ function publicState(room, viewerId) {
     currentPlayerId: currentPlayer(room)?.id || null,
     turnPhase: room.turnPhase,
     pendingPower: room.pendingPower && room.pendingPower.playerId === viewerId
-      ? { type: room.pendingPower.type, label: POWER_LABELS[room.pendingPower.type], source: serializeCard(room.pendingPower.source, true) }
+      ? {
+        type: room.pendingPower.type,
+        stage: room.pendingPower.stage || "choose",
+        label: POWER_LABELS[room.pendingPower.type],
+        source: serializeCard(room.pendingPower.source, true),
+        ownIndex: room.pendingPower.ownIndex ?? null,
+        targetPlayerId: room.pendingPower.targetPlayerId ?? null,
+        targetIndex: room.pendingPower.targetIndex ?? null
+      }
       : null,
     caboCalledBy: room.caboCalledBy,
     finalTurnsRemaining: room.finalTurnsRemaining,
@@ -262,7 +281,7 @@ function publicState(room, viewerId) {
       score: ended ? player.score : null,
       cardCount: player.hand.length,
       isHost: player.id === room.hostId,
-      hand: player.hand.map((card) => serializeCard(card, ended || player.id === viewerId || card.knownTo.includes(viewerId)))
+      hand: player.hand.map((card) => serializeCard(card, ended || card.knownTo.includes(viewerId)))
     })),
     log: room.log.slice(0, 10)
   };
@@ -354,6 +373,16 @@ function bestKnownOpponentCard(room, bot) {
   return candidates.sort((a, b) => a.value - b.value)[0] || null;
 }
 
+function randomOpponentCard(room, bot) {
+  const candidates = [];
+  for (const player of activePlayers(room)) {
+    if (player.id === bot.id) continue;
+    player.hand.forEach((card, index) => candidates.push({ player, index, card }));
+  }
+  if (!candidates.length) return null;
+  return candidates[crypto.randomInt(candidates.length)];
+}
+
 function unknownOwnIndex(bot) {
   const unknown = bot.hand
     .map((card, index) => ({ card, index }))
@@ -401,7 +430,7 @@ function discardDrawnForBot(room, bot) {
   room.drawnCard = null;
   const power = isPowerCard(card);
   if (power) {
-    room.pendingPower = { playerId: bot.id, type: power, source: card };
+    room.pendingPower = { playerId: bot.id, type: power, source: card, stage: "choose" };
     room.turnPhase = "power";
     addLog(room, `${bot.name} discarded ${cardLabel(card)} for a power.`);
     useBotPower(room, bot);
@@ -443,11 +472,58 @@ function useBotPower(room, bot) {
     return;
   }
 
-  if (room.pendingPower.type === "swap") {
+  if (room.pendingPower.type === "blindSwap") {
     const ownWorst = worstOwnCard(room, bot);
-    const opponentBest = bestKnownOpponentCard(room, bot);
-    if (!opponentBest || !ownWorst || ownWorst.value <= opponentBest.value + 1.5) {
+    const target = randomOpponentCard(room, bot);
+    if (!target || !ownWorst || ownWorst.value < 7) {
       addLog(room, `${bot.name} skipped the swap.`);
+      advanceTurn(room);
+      return;
+    }
+    const ownCard = takeCardFromHand(bot, ownWorst.index);
+    const targetCard = takeCardFromHand(target.player, target.index);
+    bot.hand[ownWorst.index] = targetCard;
+    target.player.hand[target.index] = ownCard;
+    addLog(room, `${bot.name} made a blind swap with ${target.player.name}.`);
+    advanceTurn(room);
+    return;
+  }
+
+  if (room.pendingPower.type === "forcedLookSwap") {
+    const fallback = randomOpponentCard(room, bot);
+    const target = opponentForPeek(room, bot) || { player: fallback?.player, unknownIndexes: [] };
+    const targetPlayer = target?.player || fallback?.player;
+    const targetIndex = target?.unknownIndexes?.length
+      ? target.unknownIndexes[crypto.randomInt(target.unknownIndexes.length)]
+      : fallback?.index;
+    const ownWorst = worstOwnCard(room, bot);
+    if (!targetPlayer || targetIndex === undefined || !ownWorst) {
+      addLog(room, `${bot.name} skipped the power.`);
+      advanceTurn(room);
+      return;
+    }
+    const targetCard = takeCardFromHand(targetPlayer, targetIndex);
+    targetCard.knownTo = Array.from(new Set([...targetCard.knownTo, bot.id]));
+    const ownCard = takeCardFromHand(bot, ownWorst.index);
+    bot.hand[ownWorst.index] = targetCard;
+    targetPlayer.hand[targetIndex] = ownCard;
+    addLog(room, `${bot.name} looked, then had to swap with ${targetPlayer.name}.`);
+    advanceTurn(room);
+    return;
+  }
+
+  if (room.pendingPower.type === "optionalLookSwap") {
+    const ownWorst = worstOwnCard(room, bot);
+    const opponentBest = bestKnownOpponentCard(room, bot) || randomOpponentCard(room, bot);
+    if (!opponentBest || !ownWorst) {
+      addLog(room, `${bot.name} skipped the power.`);
+      advanceTurn(room);
+      return;
+    }
+    ownWorst.card.knownTo = Array.from(new Set([...ownWorst.card.knownTo, bot.id]));
+    opponentBest.card.knownTo = Array.from(new Set([...opponentBest.card.knownTo, bot.id]));
+    if (ownWorst.card.value <= opponentBest.card.value + 1.5) {
+      addLog(room, `${bot.name} looked at both cards and kept them.`);
       advanceTurn(room);
       return;
     }
@@ -455,7 +531,7 @@ function useBotPower(room, bot) {
     const targetCard = takeCardFromHand(opponentBest.player, opponentBest.index);
     bot.hand[ownWorst.index] = targetCard;
     opponentBest.player.hand[opponentBest.index] = ownCard;
-    addLog(room, `${bot.name} swapped with ${opponentBest.player.name}.`);
+    addLog(room, `${bot.name} looked at both cards and swapped with ${opponentBest.player.name}.`);
     advanceTurn(room);
   }
 }
@@ -681,7 +757,7 @@ io.on("connection", (socket) => {
       room.drawnCard = null;
       const power = isPowerCard(card);
       if (power) {
-        room.pendingPower = { playerId, type: power, source: card };
+        room.pendingPower = { playerId, type: power, source: card, stage: "choose" };
         room.turnPhase = "power";
         addLog(room, `${player.name} discarded ${cardLabel(card)} for a power.`);
       } else {
@@ -715,14 +791,59 @@ io.on("connection", (socket) => {
         addLog(room, `${player.name} peeked at ${target.name}'s card.`);
       }
 
-      if (room.pendingPower.type === "swap") {
+      if (room.pendingPower.type === "blindSwap") {
         const target = getPlayer(room, targetPlayerId);
         if (!target || target.id === playerId) throw new Error("Choose an opponent.");
-        const ownCard = takeCardFromHand(player, ownIndex);
-        const targetCard = takeCardFromHand(target, targetIndex);
-        player.hand[ownIndex] = targetCard;
-        target.hand[targetIndex] = ownCard;
-        addLog(room, `${player.name} swapped with ${target.name}.`);
+        swapHandCards(player, ownIndex, target, targetIndex);
+        addLog(room, `${player.name} made a blind swap with ${target.name}.`);
+      }
+
+      if (room.pendingPower.type === "forcedLookSwap") {
+        if (room.pendingPower.stage === "choose" || room.pendingPower.targetPlayerId === undefined) {
+          const target = getPlayer(room, targetPlayerId);
+          if (!target || target.id === playerId) throw new Error("Choose an opponent.");
+          const card = takeCardFromHand(target, targetIndex);
+          card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+          room.pendingPower.targetPlayerId = target.id;
+          room.pendingPower.targetIndex = targetIndex;
+          room.pendingPower.stage = "chooseOwn";
+          addLog(room, `${player.name} looked at ${target.name}'s card and must swap.`);
+          reply?.({ ok: true });
+          emitRoom(room);
+          return;
+        }
+
+        const target = getPlayer(room, room.pendingPower.targetPlayerId);
+        if (!target) throw new Error("That opponent is gone.");
+        swapHandCards(player, ownIndex, target, room.pendingPower.targetIndex);
+        addLog(room, `${player.name} completed the forced swap with ${target.name}.`);
+      }
+
+      if (room.pendingPower.type === "optionalLookSwap") {
+        if (room.pendingPower.stage === "choose" || room.pendingPower.ownIndex === undefined) {
+          const card = takeCardFromHand(player, ownIndex);
+          card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+          room.pendingPower.ownIndex = ownIndex;
+          room.pendingPower.stage = "chooseTarget";
+          addLog(room, `${player.name} looked at one of their cards.`);
+          reply?.({ ok: true });
+          emitRoom(room);
+          return;
+        }
+
+        if (room.pendingPower.stage === "chooseTarget" || room.pendingPower.targetPlayerId === undefined) {
+          const target = getPlayer(room, targetPlayerId);
+          if (!target || target.id === playerId) throw new Error("Choose an opponent.");
+          const card = takeCardFromHand(target, targetIndex);
+          card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
+          room.pendingPower.targetPlayerId = target.id;
+          room.pendingPower.targetIndex = targetIndex;
+          room.pendingPower.stage = "chooseSwap";
+          addLog(room, `${player.name} looked at ${target.name}'s card and may swap.`);
+          reply?.({ ok: true });
+          emitRoom(room);
+          return;
+        }
       }
 
       advanceTurn(room);
@@ -738,7 +859,30 @@ io.on("connection", (socket) => {
       const room = getRoomOrThrow(roomCode);
       const player = requireTurn(room, playerId);
       if (!room.pendingPower || room.pendingPower.playerId !== playerId) throw new Error("No power is waiting.");
+      if (room.pendingPower.type === "forcedLookSwap" && room.pendingPower.stage === "chooseOwn") {
+        throw new Error("Queen power forces a swap after you look.");
+      }
       addLog(room, `${player.name} skipped the power.`);
+      advanceTurn(room);
+      reply?.({ ok: true });
+      emitRoom(room);
+    } catch (error) {
+      reply?.({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on("swapPower", ({ roomCode, playerId }, reply) => {
+    try {
+      const room = getRoomOrThrow(roomCode);
+      const player = requireTurn(room, playerId);
+      if (!room.pendingPower || room.pendingPower.playerId !== playerId) throw new Error("No power is waiting.");
+      if (room.pendingPower.type !== "optionalLookSwap" || room.pendingPower.stage !== "chooseSwap") {
+        throw new Error("There is no optional swap ready.");
+      }
+      const target = getPlayer(room, room.pendingPower.targetPlayerId);
+      if (!target) throw new Error("That opponent is gone.");
+      swapHandCards(player, room.pendingPower.ownIndex, target, room.pendingPower.targetIndex);
+      addLog(room, `${player.name} chose to swap with ${target.name}.`);
       advanceTurn(room);
       reply?.({ ok: true });
       emitRoom(room);

@@ -19,6 +19,7 @@ const els = {
   discardTop: document.querySelector("#discardTop"),
   drawnCard: document.querySelector("#drawnCard"),
   discardDrawnBtn: document.querySelector("#discardDrawnBtn"),
+  swapPowerBtn: document.querySelector("#swapPowerBtn"),
   caboBtn: document.querySelector("#caboBtn"),
   skipPowerBtn: document.querySelector("#skipPowerBtn"),
   players: document.querySelector("#players"),
@@ -138,26 +139,30 @@ function render() {
   els.deckBtn.disabled = !canAct() || state.turnPhase !== "draw";
   els.discardBtn.disabled = !canAct() || state.turnPhase !== "draw" || !state.discardTop;
   els.discardDrawnBtn.disabled = !canAct() || state.turnPhase !== "decide";
+  els.swapPowerBtn.disabled = !canAct() || state.pendingPower?.type !== "optionalLookSwap" || state.pendingPower?.stage !== "chooseSwap";
   els.caboBtn.disabled = !canAct() || state.turnPhase !== "draw" || Boolean(state.caboCalledBy);
-  els.skipPowerBtn.disabled = !canAct() || state.turnPhase !== "power";
+  els.skipPowerBtn.disabled = !canAct() || state.turnPhase !== "power"
+    || (state.pendingPower?.type === "forcedLookSwap" && state.pendingPower?.stage === "chooseOwn");
 
   const phase = state.status === "waiting"
     ? "Waiting for players."
     : state.status === "ended"
       ? winnerText()
       : state.pendingPower
-        ? state.pendingPower.label
+        ? powerText(state.pendingPower)
         : `${current?.name || "Someone"} ${current?.id === state.you ? "is up" : "is taking a turn"}.`;
   const cabo = caboCaller ? ` Cabo was called by ${caboCaller.name}.` : "";
   els.statusText.textContent = `${phase}${cabo}`;
 
-  els.players.innerHTML = state.players.map((player) => {
+  els.players.innerHTML = state.players.map((player, playerIndex) => {
     const isCurrent = player.id === state.currentPlayerId;
     const isWinner = state.winnerIds.includes(player.id);
     const hand = player.hand.map((card, index) => {
       const selectable = selectableCard(player, index);
       const selectedClass = selected.ownIndex === index && player.id === state.you
         || selected.targetPlayerId === player.id && selected.targetIndex === index
+        || state.pendingPower?.ownIndex === index && player.id === state.you
+        || state.pendingPower?.targetPlayerId === player.id && state.pendingPower?.targetIndex === index
         ? "selected"
         : "";
       return `
@@ -169,7 +174,7 @@ function render() {
     const score = player.score === null ? "" : `<span class="badge">${player.score}</span>`;
     const botBadge = player.isBot ? '<span class="badge">AI</span>' : "";
     return `
-      <article class="player ${isCurrent ? "current" : ""} ${isWinner ? "winner" : ""}">
+      <article class="player seat-${playerIndex} ${isCurrent ? "current" : ""} ${isWinner ? "winner" : ""}">
         <div class="player-head">
           <strong>${escapeHtml(player.name)}${player.id === state.you ? " (you)" : ""}</strong>
           <span class="badges">${player.isHost ? '<span class="badge">Host</span>' : ""}${botBadge}${score}</span>
@@ -192,13 +197,40 @@ function winnerText() {
   return `${winners.map((player) => player.name).join(", ")} won.`;
 }
 
+function powerText(power) {
+  if (power.type === "blindSwap") {
+    return selected.ownIndex === null ? "J: pick one of your cards." : "J: pick an opponent card to blind swap.";
+  }
+  if (power.type === "forcedLookSwap") {
+    return power.stage === "chooseOwn" ? "Q: pick one of your cards. You must swap." : "Q: pick an opponent card to look at.";
+  }
+  if (power.type === "optionalLookSwap") {
+    if (power.stage === "chooseTarget") return "Black K: pick an opponent card to look at.";
+    if (power.stage === "chooseSwap") return "Black K: choose Swap or Skip.";
+    return "Black K: pick one of your cards to look at.";
+  }
+  return power.label;
+}
+
 function selectableCard(player, index) {
   if (!canAct()) return false;
   if (state.turnPhase === "replace" || state.turnPhase === "decide") return player.id === state.you;
   if (!state.pendingPower) return false;
   if (state.pendingPower.type === "ownPeek") return player.id === state.you;
   if (state.pendingPower.type === "otherPeek") return player.id !== state.you;
-  if (state.pendingPower.type === "swap") return player.id === state.you || player.id !== state.you;
+  if (state.pendingPower.type === "blindSwap") {
+    if (selected.ownIndex === null) return player.id === state.you;
+    return player.id !== state.you;
+  }
+  if (state.pendingPower.type === "forcedLookSwap") {
+    if (state.pendingPower.stage === "chooseOwn") return player.id === state.you;
+    return player.id !== state.you;
+  }
+  if (state.pendingPower.type === "optionalLookSwap") {
+    if (state.pendingPower.stage === "chooseTarget") return player.id !== state.you;
+    if (state.pendingPower.stage === "chooseSwap") return false;
+    return player.id === state.you;
+  }
   return false;
 }
 
@@ -222,7 +254,7 @@ async function selectCard(playerId, index) {
     return;
   }
 
-  if (state.pendingPower.type === "swap") {
+  if (state.pendingPower.type === "blindSwap") {
     if (playerId === state.you) {
       selected.ownIndex = index;
       render();
@@ -243,6 +275,24 @@ async function selectCard(playerId, index) {
       targetIndex: selected.targetIndex
     });
     selected = { ownIndex: null, targetPlayerId: null, targetIndex: null };
+    return;
+  }
+
+  if (state.pendingPower.type === "forcedLookSwap") {
+    if (state.pendingPower.stage === "chooseOwn") {
+      await request("usePower", { roomCode: state.roomCode, playerId: state.you, ownIndex: index });
+      return;
+    }
+    await request("usePower", { roomCode: state.roomCode, playerId: state.you, targetPlayerId: playerId, targetIndex: index });
+    return;
+  }
+
+  if (state.pendingPower.type === "optionalLookSwap") {
+    if (state.pendingPower.stage === "chooseTarget") {
+      await request("usePower", { roomCode: state.roomCode, playerId: state.you, targetPlayerId: playerId, targetIndex: index });
+      return;
+    }
+    await request("usePower", { roomCode: state.roomCode, playerId: state.you, ownIndex: index });
   }
 }
 
@@ -263,6 +313,7 @@ els.startBtn.addEventListener("click", () => request("startGame", { roomCode: st
 els.deckBtn.addEventListener("click", () => request("draw", { roomCode: state.roomCode, playerId: state.you, source: "deck" }));
 els.discardBtn.addEventListener("click", () => request("draw", { roomCode: state.roomCode, playerId: state.you, source: "discard" }));
 els.discardDrawnBtn.addEventListener("click", () => request("discardDrawn", { roomCode: state.roomCode, playerId: state.you }));
+els.swapPowerBtn.addEventListener("click", () => request("swapPower", { roomCode: state.roomCode, playerId: state.you }));
 els.caboBtn.addEventListener("click", () => request("callCabo", { roomCode: state.roomCode, playerId: state.you }));
 els.skipPowerBtn.addEventListener("click", () => request("skipPower", { roomCode: state.roomCode, playerId: state.you }));
 els.leaveBtn.addEventListener("click", async () => {
