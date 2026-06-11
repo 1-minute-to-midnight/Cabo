@@ -231,6 +231,7 @@ function startRound(room) {
   room.finalTurnsRemaining = null;
   room.winnerIds = [];
   room.initialPeekDone = {};
+  room.matchLocks = new Set();
   room.log = ["Round started. Choose any two of your cards to peek at, then remember them."];
 
   for (const player of players) {
@@ -1247,10 +1248,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("matchCard", ({ roomCode, playerId, targetPlayerId, index }, reply) => {
+  socket.on("matchCard", ({ roomCode, playerId, targetPlayerId, index, cardId }, reply) => {
     try {
       const room = getRoomOrThrow(roomCode);
       if (room.status !== "playing") throw new Error("The round is not in progress.");
+      room.matchLocks ||= new Set();
 
       const player = getPlayer(room, playerId);
       if (!player) throw new Error("Player not found.");
@@ -1260,11 +1262,20 @@ io.on("connection", (socket) => {
 
       const card = targetPlayer.hand[index];
       if (!card) throw new Error("Card not found at that index.");
-      if (playerId !== targetPlayerId && !card.knownTo.includes(playerId)) {
-        throw new Error("You can only match an opponent card you have seen.");
+      if (cardId && card.id !== cardId) {
+        throw new Error("That card moved before you could play it.");
       }
+      if (player.isBot && playerId !== targetPlayerId && !card.knownTo.includes(playerId)) {
+        throw new Error("Bots can only match opponent cards they have seen.");
+      }
+      const lockKey = `${targetPlayerId}:${card.id}`;
+      if (room.matchLocks.has(lockKey)) {
+        throw new Error("Someone else got to that card first.");
+      }
+      room.matchLocks.add(lockKey);
 
       const result = performMatchCard(room, player, targetPlayer, index);
+      if (!result.ok) room.matchLocks.delete(lockKey);
       reply?.(result);
       emitRoom(room);
     } catch (error) {

@@ -338,7 +338,8 @@ function render() {
       e.dataTransfer.setData("text/plain", JSON.stringify({
         type: "hand-card",
         playerId: button.dataset.playerId,
-        index: Number(button.dataset.index)
+        index: Number(button.dataset.index),
+        cardId: button.querySelector(".card")?.dataset.cardId || null
       }));
       button.classList.add("dragging");
     });
@@ -1192,7 +1193,8 @@ els.discardBtn.addEventListener("drop", async (e) => {
           roomCode: state.roomCode,
           playerId: state.you,
           targetPlayerId: data.playerId,
-          index: data.index
+          index: data.index,
+          cardId: data.cardId
         });
       }
     } catch (err) {
