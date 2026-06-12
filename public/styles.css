@@ -266,6 +266,26 @@ button.secondary:hover:not(:disabled) {
   pointer-events: none;
 }
 
+.court-svg-card {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.court-svg-card::before {
+  display: none;
+}
+
+.court-svg-card > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Playing Card Face Details */
 .card-corner {
   position: absolute;

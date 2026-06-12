@@ -10,9 +10,9 @@ const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 const POWER_LABELS = {
   ownPeek: "Peek at one of your cards",
   otherPeek: "Peek at one opponent card",
-  blindSwap: "Blind swap one of your cards with an opponent card",
-  forcedLookSwap: "Look at an opponent card, then swap it with one of yours",
-  optionalLookSwap: "Look at one of yours and one opponent card, then choose whether to swap"
+  blindSwap: "Blind swap any two hand cards",
+  forcedLookSwap: "Look at an opponent card, then swap it with another card",
+  optionalLookSwap: "Look at two cards, then choose whether to swap"
 };
 const BOT_NAMES = ["Ada", "Babbage", "Cardsharp", "Noor", "Vega"];
 const BOT_TURN_DELAY_MS = 1600;
@@ -268,7 +268,8 @@ function finishRound(room) {
   if (room.caboCalledBy) {
     const caller = getPlayer(room, room.caboCalledBy);
     if (caller) {
-      if (caller.score <= 7 && caller.score === lowScore) {
+      const callerIsUniqueLowest = activePlayers(room).every((player) => player.id === caller.id || caller.score < player.score);
+      if (caller.score <= 7 && callerIsUniqueLowest) {
         // Caller has the lowest score: successful Cabo call (+1 TP)
         caller.tournamentPoints = (caller.tournamentPoints || 0) + 1;
         room.winnerIds = [caller.id];
@@ -277,7 +278,7 @@ function finishRound(room) {
         // Caller did not have the lowest score: failed Cabo call (-1 TP, nobody wins!)
         caller.tournamentPoints = (caller.tournamentPoints || 0) - 1;
         room.winnerIds = []; // Nobody wins the round
-        const reason = caller.score > 7 ? `their hand was ${caller.score}, above 7` : "they did not have the lowest score";
+        const reason = caller.score > 7 ? `their hand was ${caller.score}, above 7` : "they did not have the unique lowest score";
         addLog(room, `${caller.name} called Cabo incorrectly (${reason}) and got -1 tournament point. Nobody wins the round.`);
       }
     } else {
@@ -304,11 +305,23 @@ function takeCardFromHand(player, index) {
   return card;
 }
 
-function swapHandCards(player, ownIndex, target, targetIndex) {
-  const ownCard = takeCardFromHand(player, ownIndex);
-  const targetCard = takeCardFromHand(target, targetIndex);
-  player.hand[ownIndex] = targetCard;
-  target.hand[targetIndex] = ownCard;
+function swapHandCards(playerA, indexA, playerB, indexB) {
+  const cardA = takeCardFromHand(playerA, indexA);
+  const cardB = takeCardFromHand(playerB, indexB);
+  playerA.hand[indexA] = cardB;
+  playerB.hand[indexB] = cardA;
+}
+
+function getHandSpot(room, playerId, index) {
+  const player = getPlayer(room, playerId);
+  if (!player) throw new Error("Choose a player still in the round.");
+  if (!Number.isInteger(index)) throw new Error("Choose a card.");
+  const card = takeCardFromHand(player, index);
+  return { player, index, card };
+}
+
+function sameHandSpot(a, b) {
+  return a.player.id === b.player.id && a.index === b.index;
 }
 
 function serializeCard(card, visible) {
@@ -357,6 +370,10 @@ function publicState(room, viewerId) {
         label: POWER_LABELS[room.pendingPower.type],
         source: serializeCard(room.pendingPower.source, true),
         ownIndex: room.pendingPower.ownIndex ?? null,
+        firstPlayerId: room.pendingPower.firstPlayerId ?? null,
+        firstIndex: room.pendingPower.firstIndex ?? null,
+        secondPlayerId: room.pendingPower.secondPlayerId ?? null,
+        secondIndex: room.pendingPower.secondIndex ?? null,
         targetPlayerId: room.pendingPower.targetPlayerId ?? null,
         targetIndex: room.pendingPower.targetIndex ?? null
       }
@@ -1108,7 +1125,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("usePower", ({ roomCode, playerId, ownIndex, targetPlayerId, targetIndex }, reply) => {
+  socket.on("usePower", ({ roomCode, playerId, ownIndex, targetPlayerId, targetIndex, firstPlayerId, firstIndex, secondPlayerId, secondIndex }, reply) => {
     try {
       const room = getRoomOrThrow(roomCode);
       const player = requireTurn(room, playerId);
@@ -1131,15 +1148,20 @@ io.on("connection", (socket) => {
       }
 
       if (room.pendingPower.type === "blindSwap") {
-        const target = getPlayer(room, targetPlayerId);
-        if (!target || target.id === playerId) throw new Error("Choose an opponent.");
+        const first = firstPlayerId
+          ? getHandSpot(room, firstPlayerId, firstIndex)
+          : getHandSpot(room, player.id, ownIndex);
+        const second = secondPlayerId
+          ? getHandSpot(room, secondPlayerId, secondIndex)
+          : getHandSpot(room, targetPlayerId, targetIndex);
+        if (sameHandSpot(first, second)) throw new Error("Choose two different cards.");
         emitAnimation(room, {
           type: "swap",
-          from: { kind: "hand", playerId: player.id, index: ownIndex },
-          to: { kind: "hand", playerId: target.id, index: targetIndex }
+          from: { kind: "hand", playerId: first.player.id, index: first.index },
+          to: { kind: "hand", playerId: second.player.id, index: second.index }
         });
-        swapHandCards(player, ownIndex, target, targetIndex);
-        addLog(room, `${player.name} made a blind swap with ${target.name}.`);
+        swapHandCards(first.player, first.index, second.player, second.index);
+        addLog(room, `${player.name} made a blind swap between ${first.player.name} and ${second.player.name}.`);
       }
 
       if (room.pendingPower.type === "forcedLookSwap") {
@@ -1149,6 +1171,8 @@ io.on("connection", (socket) => {
           const card = takeCardFromHand(target, targetIndex);
           card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
           emitReveal(player, [{ ownerId: target.id, index: targetIndex, card }], "peek");
+          room.pendingPower.firstPlayerId = target.id;
+          room.pendingPower.firstIndex = targetIndex;
           room.pendingPower.targetPlayerId = target.id;
           room.pendingPower.targetIndex = targetIndex;
           room.pendingPower.stage = "chooseOwn";
@@ -1158,40 +1182,53 @@ io.on("connection", (socket) => {
           return;
         }
 
-        const target = getPlayer(room, room.pendingPower.targetPlayerId);
-        if (!target) throw new Error("That opponent is gone.");
+        const first = getHandSpot(room, room.pendingPower.firstPlayerId || room.pendingPower.targetPlayerId, room.pendingPower.firstIndex ?? room.pendingPower.targetIndex);
+        const second = secondPlayerId
+          ? getHandSpot(room, secondPlayerId, secondIndex)
+          : getHandSpot(room, player.id, ownIndex);
+        if (sameHandSpot(first, second)) throw new Error("Choose two different cards.");
         emitAnimation(room, {
           type: "swap",
-          from: { kind: "hand", playerId: player.id, index: ownIndex },
-          to: { kind: "hand", playerId: target.id, index: room.pendingPower.targetIndex }
+          from: { kind: "hand", playerId: first.player.id, index: first.index },
+          to: { kind: "hand", playerId: second.player.id, index: second.index }
         });
-        swapHandCards(player, ownIndex, target, room.pendingPower.targetIndex);
-        addLog(room, `${player.name} completed the forced swap with ${target.name}.`);
+        swapHandCards(first.player, first.index, second.player, second.index);
+        addLog(room, `${player.name} completed the forced swap between ${first.player.name} and ${second.player.name}.`);
       }
 
       if (room.pendingPower.type === "optionalLookSwap") {
-        if (room.pendingPower.stage === "choose" || room.pendingPower.ownIndex === undefined) {
-          const card = takeCardFromHand(player, ownIndex);
+        if (room.pendingPower.stage === "choose" || room.pendingPower.firstPlayerId === undefined) {
+          const first = firstPlayerId
+            ? getHandSpot(room, firstPlayerId, firstIndex)
+            : getHandSpot(room, player.id, ownIndex);
+          const card = first.card;
           card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
-          emitReveal(player, [{ ownerId: player.id, index: ownIndex, card }], "peek");
-          room.pendingPower.ownIndex = ownIndex;
+          emitReveal(player, [{ ownerId: first.player.id, index: first.index, card }], "peek");
+          if (first.player.id === player.id) room.pendingPower.ownIndex = first.index;
+          room.pendingPower.firstPlayerId = first.player.id;
+          room.pendingPower.firstIndex = first.index;
           room.pendingPower.stage = "chooseTarget";
-          addLog(room, `${player.name} looked at one of their cards.`);
+          addLog(room, `${player.name} looked at a card.`);
           reply?.({ ok: true });
           emitRoom(room);
           return;
         }
 
-        if (room.pendingPower.stage === "chooseTarget" || room.pendingPower.targetPlayerId === undefined) {
-          const target = getPlayer(room, targetPlayerId);
-          if (!target || target.id === playerId) throw new Error("Choose an opponent.");
-          const card = takeCardFromHand(target, targetIndex);
+        if (room.pendingPower.stage === "chooseTarget" || room.pendingPower.secondPlayerId === undefined) {
+          const second = secondPlayerId
+            ? getHandSpot(room, secondPlayerId, secondIndex)
+            : getHandSpot(room, targetPlayerId, targetIndex);
+          const first = getHandSpot(room, room.pendingPower.firstPlayerId, room.pendingPower.firstIndex);
+          if (sameHandSpot(first, second)) throw new Error("Choose two different cards.");
+          const card = second.card;
           card.knownTo = Array.from(new Set([...card.knownTo, player.id]));
-          emitReveal(player, [{ ownerId: target.id, index: targetIndex, card }], "peek");
-          room.pendingPower.targetPlayerId = target.id;
-          room.pendingPower.targetIndex = targetIndex;
+          emitReveal(player, [{ ownerId: second.player.id, index: second.index, card }], "peek");
+          room.pendingPower.secondPlayerId = second.player.id;
+          room.pendingPower.secondIndex = second.index;
+          room.pendingPower.targetPlayerId = second.player.id;
+          room.pendingPower.targetIndex = second.index;
           room.pendingPower.stage = "chooseSwap";
-          addLog(room, `${player.name} looked at ${target.name}'s card and may swap.`);
+          addLog(room, `${player.name} looked at both cards and may swap.`);
           reply?.({ ok: true });
           emitRoom(room);
           return;
@@ -1231,15 +1268,16 @@ io.on("connection", (socket) => {
       if (room.pendingPower.type !== "optionalLookSwap" || room.pendingPower.stage !== "chooseSwap") {
         throw new Error("There is no optional swap ready.");
       }
-      const target = getPlayer(room, room.pendingPower.targetPlayerId);
-      if (!target) throw new Error("That opponent is gone.");
+      const first = getHandSpot(room, room.pendingPower.firstPlayerId, room.pendingPower.firstIndex);
+      const second = getHandSpot(room, room.pendingPower.secondPlayerId || room.pendingPower.targetPlayerId, room.pendingPower.secondIndex ?? room.pendingPower.targetIndex);
+      if (sameHandSpot(first, second)) throw new Error("Choose two different cards.");
       emitAnimation(room, {
         type: "swap",
-        from: { kind: "hand", playerId: player.id, index: room.pendingPower.ownIndex },
-        to: { kind: "hand", playerId: target.id, index: room.pendingPower.targetIndex }
+        from: { kind: "hand", playerId: first.player.id, index: first.index },
+        to: { kind: "hand", playerId: second.player.id, index: second.index }
       });
-      swapHandCards(player, room.pendingPower.ownIndex, target, room.pendingPower.targetIndex);
-      addLog(room, `${player.name} chose to swap with ${target.name}.`);
+      swapHandCards(first.player, first.index, second.player, second.index);
+      addLog(room, `${player.name} chose to swap ${first.player.name}'s card with ${second.player.name}'s card.`);
       endCurrentPlayerTurn(room);
       reply?.({ ok: true });
       emitRoom(room);
