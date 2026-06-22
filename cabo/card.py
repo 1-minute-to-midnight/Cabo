@@ -24,31 +24,17 @@ class Card:
     rank: str
     suit: Suit
 
-    
-    # if special use point table else str to int conversion
+    RANKS: tuple[str, ...] = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 
-    def value(self) -> int:
-        point_table = {
+
+    point_table = {
             "A" : 1,
             "K" : 13,
             "Q" : 12,
             "J" : 11,
             }
 
-        
-        # Red Kings are special
-        if self.rank == "K" and self.suit in (Suit.DIAMONDS, Suit.HEARTS):
-            return -1
-
-        elif self.rank in point_table:
-            return point_table[self.rank]
-        
-        else:
-            return int(self.rank)
-
-
-    def power(self) -> Power:
-        power_table = {
+    power_table = {
         "K" : Power.LOOK_AND_SWAP,
         "Q" : Power.FORCED_SWAP,            
         "J" : Power.BLIND_SWAP,
@@ -58,11 +44,27 @@ class Card:
         "7" : Power.PEEK_OWN_CARD,
 
             }
+    
+    # if special use point table else str to int conversion
+
+    def value(self) -> int:
+        # Red Kings are special
+        if self.rank == "K" and self.suit in (Suit.DIAMONDS, Suit.HEARTS):
+            return -1
+
+        elif self.rank in Card.point_table:
+            return Card.point_table[self.rank]
+        
+        else:
+            return int(self.rank)
+
+
+    def power(self) -> Power:
         if self.rank == "K" and self.suit in (Suit.DIAMONDS, Suit.HEARTS):
             return Power.NONE
 
-        elif self.rank in power_table:
-            return power_table[self.rank]
+        elif self.rank in Card.power_table:
+            return Card.power_table[self.rank]
 
         else:
             return Power.NONE
