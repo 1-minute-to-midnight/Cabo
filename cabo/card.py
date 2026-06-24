@@ -4,12 +4,12 @@ from enum import Enum, auto
 
 
 class Power(Enum):
-            LOOK_AND_SWAP = auto()
-            FORCED_SWAP = auto()
-            BLIND_SWAP = auto()
-            PEEK_OPPONENT_CARD = auto()
-            PEEK_OWN_CARD = auto()
-            NONE = auto()
+    LOOK_AND_SWAP = auto()
+    FORCED_SWAP = auto()
+    BLIND_SWAP = auto()
+    PEEK_OPPONENT_CARD = auto()
+    PEEK_OWN_CARD = auto()
+    NONE = auto()
 
 
 class Suit(Enum):
