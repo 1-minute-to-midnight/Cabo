@@ -74,6 +74,7 @@ def test_discard_drawn():
     game.draw_from_deck()
     before_card = players[0].hand[0]
     before_discard = len(game.discard_pile)
+    game.drawn_card = Card("3", Suit.CLUBS)
     game.discard_drawn()
     assert(len(game.discard_pile) == before_discard + 1)
     assert(players[0].hand[0] == before_card)
@@ -92,8 +93,131 @@ def test_discard_drawn():
     with pytest.raises(InvalidMoveError, match="Can't re-discard card taken from discard pile!"):
         game.discard_drawn()
     
-    
+
+# Bite 3
+def test_peek_own():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[0].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("7", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    assert(game.resolve_power(own_slot=1) == Card("A", Suit.SPADES))
+    assert(game.phase == Phase.AWAITING_TURN_END)
+    game.drawn_card = Card("8", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    assert(game.resolve_power(own_slot=0) == Card("K", Suit.HEARTS))
+    assert(game.phase == Phase.AWAITING_TURN_END)
+
+def test_peek_opp():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("9", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    assert(game.resolve_power(opp_index=1, opp_slot=1) == Card("A", Suit.SPADES))
+    assert(game.phase == Phase.AWAITING_TURN_END)
+    game.drawn_card = Card("10", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    assert(game.resolve_power(opp_index=1, opp_slot=0) == Card("K", Suit.HEARTS))
+    assert(game.phase == Phase.AWAITING_TURN_END)
 
 
+def test_J():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[0].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("J", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    assert (players[0].hand[1] == Card("A", Suit.SPADES))
+    assert (players[1].hand[1] == Card("10", Suit.SPADES))
+    assert(game.phase == Phase.AWAITING_TURN_END)
+
+
+def test_Q():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[0].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("Q", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    own, opp = game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    assert (own == Card("10", Suit.SPADES))
+    assert (opp == Card("A", Suit.SPADES))
+    assert (players[0].hand[1] == Card("A", Suit.SPADES))
+    assert (players[1].hand[1] == Card("10", Suit.SPADES))   
+    assert(game.phase == Phase.AWAITING_TURN_END)
+
+def test_K():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[0].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("K", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    own, opp = game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    assert(game.phase == Phase.AWAITING_SWAP_DECISION)
+    game.complete_swap()
+    assert (own == Card("10", Suit.SPADES))
+    assert (opp == Card("A", Suit.SPADES))
+    assert (players[0].hand[1] == Card("A", Suit.SPADES))
+    assert (players[1].hand[1] == Card("10", Suit.SPADES))
+    assert(game.phase == Phase.AWAITING_TURN_END)
+    game.drawn_card = Card("K", Suit.SPADES) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    own, opp = game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    assert(game.phase == Phase.AWAITING_SWAP_DECISION)
+    game.decline_swap()
+    assert (own == Card("A", Suit.SPADES))
+    assert (opp == Card("10", Suit.SPADES))
+    assert (players[0].hand[1] == Card("A", Suit.SPADES))
+    assert (players[1].hand[1] == Card("10", Suit.SPADES))
+    assert(game.phase == Phase.AWAITING_TURN_END)
+
+
+def test_skip():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[0].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("K", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.skip()
+    assert(game.phase == Phase.AWAITING_TURN_END)
+
+
+def test_no_power():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[0].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("K", Suit.DIAMONDS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    assert(game.phase == Phase.AWAITING_TURN_END)
+
+
+def test_K_swap_err():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[0].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("J", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    with pytest.raises(InvalidMoveError, match="Cannot do that now!"):
+        game.complete_swap()
+    with pytest.raises(InvalidMoveError, match="Cannot do that now!"):
+        game.decline_swap()
 
 

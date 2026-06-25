@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from cabo.deck import Deck
-from cabo.card import Card
+from cabo.card import Card, Power
 from cabo.player import Player
 from typing import  Optional
 
@@ -11,6 +11,7 @@ class Phase(Enum):
     AWAITING_DISCARD = auto()
     RESOLVING_POWER = auto()
     AWAITING_TURN_END = auto()
+    AWAITING_SWAP_DECISION = auto()
     ROUND_OVER = auto()
 
 
@@ -30,6 +31,7 @@ class Game:
     from_discard: bool = False
     phase: Phase = Phase.AWAITING_DRAW 
     cabo_caller: Optional[Player] = None
+    pending_swap: Optional[tuple[int, int, int]] = None
 
 
     def __post_init__(self):
@@ -79,7 +81,10 @@ class Game:
         if self.phase == Phase.AWAITING_DISCARD:
             if not self.from_discard:
                 self.discard_pile.append(self.drawn_card)
-                self.phase = Phase.AWAITING_TURN_END
+                if self.discard_top.power() != Power.NONE:
+                    self.phase = Phase.RESOLVING_POWER
+                else:
+                    self.phase = Phase.AWAITING_TURN_END
             else:
                 raise InvalidMoveError("Can't re-discard card taken from discard pile!")
         else:
@@ -95,6 +100,81 @@ class Game:
             self.phase = Phase.AWAITING_DRAW
         else:
             raise InvalidMoveError("Cannot do that now!")
+
+    def resolve_power(self, own_slot=None, opp_slot=None, opp_index=None) -> Card | None | tuple[Card, Card]:
+        if self.phase == Phase.RESOLVING_POWER:
+            self.phase = Phase.AWAITING_TURN_END
+            #resolve each power
+            match self.discard_top.power():
+                case Power.PEEK_OWN_CARD:
+                    return self.peek_own(own_slot)
+                case Power.PEEK_OPPONENT_CARD:
+                    return self.peek_opponent(opp_index, opp_slot)
+                case Power.BLIND_SWAP:
+                    self._swap(own_slot, opp_index, opp_slot)
+                case Power.FORCED_SWAP:
+                    own = self.peek_own(own_slot)
+                    opp = self.peek_opponent(opp_index, opp_slot)
+                    self._swap(own_slot, opp_index, opp_slot)   # forced
+                    return own, opp
+                case Power.CHOICE_SWAP:
+                    return self.look(own_slot, opp_index, opp_slot) 
+
+        else:
+            raise InvalidMoveError("Cannot do that now!")
+
+    
+    def skip(self) -> None:
+        if self.phase == Phase.RESOLVING_POWER:
+            self.phase = Phase.AWAITING_TURN_END
+        else:
+            raise InvalidMoveError("Cannot do that now!")
+
+    def peek_own(self, own_slot) -> Card:
+        return self.players[self.current_turn].peek(own_slot)
+
+    def peek_opponent(self, opp_index, opp_slot) -> Card:
+        return self.players[opp_index].peek(opp_slot)
+
+    def _swap(self, own_slot, opp_index, opp_slot) -> None:
+        to_swap = self.players[self.current_turn].replace(own_slot, self.players[opp_index].hand[opp_slot])
+        self.players[opp_index].replace(opp_slot, to_swap)
+
+    def look(self, own_slot, opp_index, opp_slot) -> tuple[Card, Card]:
+        own = self.players[self.current_turn].peek(own_slot)
+        opp = self.players[opp_index].peek(opp_slot)
+        self.phase = Phase.AWAITING_SWAP_DECISION
+        self.pending_swap = (own_slot, opp_index, opp_slot)
+        return own, opp
+
+    def complete_swap(self) -> None:
+        if self.phase == Phase.AWAITING_SWAP_DECISION:
+            own_slot, opp_index, opp_slot = self.pending_swap
+            self._swap(own_slot, opp_index, opp_slot)
+            self.phase = Phase.AWAITING_TURN_END
+            self.pending_swap = None
+
+        else:
+            raise InvalidMoveError("Cannot do that now!")
+
+
+    def decline_swap(self) -> None:
+        if self.phase == Phase.AWAITING_SWAP_DECISION:
+            self.pending_swap = None
+            self.phase = Phase.AWAITING_TURN_END
+            
+        else:
+            raise InvalidMoveError("Cannot do that now!")
+
+    
+
+
+
+
+
+
+
+
 
 
 

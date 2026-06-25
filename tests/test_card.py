@@ -57,7 +57,7 @@ def test_jack():
     ("8", Power.PEEK_OWN_CARD),
     ("9", Power.PEEK_OPPONENT_CARD),
     ("10", Power.PEEK_OPPONENT_CARD),
-    ("K", Power.LOOK_AND_SWAP),
+    ("K", Power.CHOICE_SWAP),
     ("Q", Power.FORCED_SWAP),
     ("J", Power.BLIND_SWAP),
     ("A", Power.NONE),

@@ -4,7 +4,7 @@ from enum import Enum, auto
 
 
 class Power(Enum):
-    LOOK_AND_SWAP = auto()
+    CHOICE_SWAP = auto()
     FORCED_SWAP = auto()
     BLIND_SWAP = auto()
     PEEK_OPPONENT_CARD = auto()
@@ -35,7 +35,7 @@ class Card:
             }
 
     power_table = {
-        "K" : Power.LOOK_AND_SWAP,
+        "K" : Power.CHOICE_SWAP,
         "Q" : Power.FORCED_SWAP,            
         "J" : Power.BLIND_SWAP,
         "10": Power.PEEK_OPPONENT_CARD,
