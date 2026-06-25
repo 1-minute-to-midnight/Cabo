@@ -220,4 +220,92 @@ def test_K_swap_err():
     with pytest.raises(InvalidMoveError, match="Cannot do that now!"):
         game.decline_swap()
 
+# Bite 4
+def test_call_cabo():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[1].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[0].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("Q", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.call_cabo()
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    assert(game.cabo_caller == players[0])
+    assert(game.phase == Phase.ROUND_OVER)
+
+def test_winner_loser():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[2].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[0].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    game.drawn_card = Card("Q", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.call_cabo()
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    assert(game.winner_loser() == 'rishin')
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[2].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[0].hand = [Card("3", Suit.HEARTS), Card("4", Suit.SPADES)]
+    game.drawn_card = Card("Q", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.call_cabo()
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    assert(game.winner_loser() == None)
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[2].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES)]
+    players[1].hand = [Card("3", Suit.SPADES), Card("1", Suit.SPADES)]
+    players[0].hand = [Card("3", Suit.HEARTS), Card("2", Suit.SPADES)]
+    game.drawn_card = Card("Q", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.call_cabo()
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    assert(game.winner_loser() == None)
+    players = [Player("rishin"), Player("roshna")]
+    game = Game(players=players)
+    players[1].hand = [Card("3", Suit.SPADES), Card("1", Suit.SPADES)]
+    players[0].hand = [Card("3", Suit.HEARTS), Card("1", Suit.SPADES)]
+    game.drawn_card = Card("Q", Suit.CLUBS) 
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.call_cabo()
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    game.phase = Phase.AWAITING_TURN_END
+    game.end_turn()
+    assert(game.winner_loser() == None)
+    assert(game.result() == {"rishin": (players[0].total_score(), players[0].hand), "roshna": (players[1].total_score(), players[1].hand)})
+    game.phase = Phase.AWAITING_TURN_END
+    with pytest.raises(InvalidMoveError, match="Cabo has already been called!"):
+        game.call_cabo()
+
 

@@ -4,6 +4,10 @@ from cabo.deck import Deck
 from cabo.card import Card, Power
 from cabo.player import Player
 from typing import  Optional
+from collections import namedtuple
+
+
+PlayerResult = namedtuple('PlayerResult', ['score', 'hand'])
 
 
 class Phase(Enum):
@@ -95,11 +99,14 @@ class Game:
 
 
     def end_turn(self) -> None:
-        if self.phase == Phase.AWAITING_TURN_END:
-            self.current_turn = (self.current_turn + 1) % len(self.players)
-            self.phase = Phase.AWAITING_DRAW
-        else:
+        if self.phase != Phase.AWAITING_TURN_END:
             raise InvalidMoveError("Cannot do that now!")
+        next_turn = (self.current_turn + 1) % len(self.players)
+        if self.cabo_caller is not None and self.players[next_turn] is self.cabo_caller:
+            self.phase = Phase.ROUND_OVER          
+        else:
+            self.current_turn = next_turn
+            self.phase = Phase.AWAITING_DRAW
 
     def resolve_power(self, own_slot=None, opp_slot=None, opp_index=None) -> Card | None | tuple[Card, Card]:
         if self.phase == Phase.RESOLVING_POWER:
@@ -165,6 +172,37 @@ class Game:
             
         else:
             raise InvalidMoveError("Cannot do that now!")
+
+
+    def call_cabo(self):
+        if self.phase != Phase.AWAITING_TURN_END:
+            raise InvalidMoveError("Cannot do that now!")
+        if self.cabo_caller is not None:
+            raise InvalidMoveError("Cabo has already been called!")
+        self.cabo_caller = self.players[self.current_turn]
+
+    
+    
+
+    def result(self) -> dict[str, PlayerResult]:
+        if self.phase != Phase.ROUND_OVER:
+            raise InvalidMoveError("Cannot do that now!")
+        return {p.name: PlayerResult(p.total_score(), p.hand) for p in self.players}
+
+    def winner_loser(self):
+        if self.phase != Phase.ROUND_OVER:
+            raise InvalidMoveError("Cannot do that now!")
+        caller = self.cabo_caller.name
+        caller_score = self.result()[caller].score
+        others = [p.score for name, p in self.result().items() if name != caller]
+        if caller_score < 7 and all(caller_score < other for other in others):
+            return caller
+        else:
+            return None
+        
+
+        
+
 
     
 
