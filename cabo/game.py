@@ -35,7 +35,7 @@ class Game:
     from_discard: bool = False
     phase: Phase = Phase.AWAITING_DRAW 
     cabo_caller: Optional[Player] = None
-    pending_swap: Optional[tuple[int, int, int]] = None
+    pending_swap: Optional[tuple[int, int, int, int]] = None
 
 
     def __post_init__(self):
@@ -45,8 +45,11 @@ class Game:
                 player.hand.append(self.deck.draw())
                 
     @property
-    def discard_top(self) -> Card:
-        return self.discard_pile[-1]
+    def discard_top(self) -> Card | None:
+        if self.discard_pile:
+            return self.discard_pile[-1]
+        else:
+            return None
 
 
     def draw_from_deck(self) -> None:
@@ -108,24 +111,27 @@ class Game:
             self.current_turn = next_turn
             self.phase = Phase.AWAITING_DRAW
 
-    def resolve_power(self, own_slot=None, opp_slot=None, opp_index=None) -> Card | None | tuple[Card, Card]:
+    def resolve_power(self, player_a=None, slot_a=None, player_b=None, slot_b=None) -> Card | None | tuple[Card, Card]:
         if self.phase == Phase.RESOLVING_POWER:
-            self.phase = Phase.AWAITING_TURN_END
             #resolve each power
             match self.discard_top.power():
                 case Power.PEEK_OWN_CARD:
-                    return self.peek_own(own_slot)
+                    result = self.peek_own(slot_a)
                 case Power.PEEK_OPPONENT_CARD:
-                    return self.peek_opponent(opp_index, opp_slot)
+                    result = self.peek_opponent(player_b, slot_b)
                 case Power.BLIND_SWAP:
-                    self._swap(own_slot, opp_index, opp_slot)
+                    self._swap(player_a, slot_a, player_b, slot_b)
+                    result = None
                 case Power.FORCED_SWAP:
-                    own = self.peek_own(own_slot)
-                    opp = self.peek_opponent(opp_index, opp_slot)
-                    self._swap(own_slot, opp_index, opp_slot)   # forced
-                    return own, opp
+                    self._check_distinct(player_a, player_b)         # validate before peeking (no info leak)
+                    card_a = self.players[player_a].peek(slot_a)     # peek the ACTUAL two target cards
+                    card_b = self.players[player_b].peek(slot_b)
+                    self._swap(player_a, slot_a, player_b, slot_b)   # forced
+                    result = card_a, card_b
                 case Power.CHOICE_SWAP:
-                    return self.look(own_slot, opp_index, opp_slot) 
+                    return self.look(player_a, slot_a, player_b, slot_b)   # ends in AWAITING_SWAP_DECISION, not TURN_END 
+            self.phase = Phase.AWAITING_TURN_END
+            return result
 
         else:
             raise InvalidMoveError("Cannot do that now!")
@@ -137,27 +143,35 @@ class Game:
         else:
             raise InvalidMoveError("Cannot do that now!")
 
-    def peek_own(self, own_slot) -> Card:
-        return self.players[self.current_turn].peek(own_slot)
+    def peek_own(self, slot_a) -> Card:
+        return self.players[self.current_turn].peek(slot_a)
 
-    def peek_opponent(self, opp_index, opp_slot) -> Card:
-        return self.players[opp_index].peek(opp_slot)
+    def peek_opponent(self, player_b, slot_b) -> Card:
+        return self.players[player_b].peek(slot_b)
 
-    def _swap(self, own_slot, opp_index, opp_slot) -> None:
-        to_swap = self.players[self.current_turn].replace(own_slot, self.players[opp_index].hand[opp_slot])
-        self.players[opp_index].replace(opp_slot, to_swap)
+    def _check_distinct(self, player_a, player_b):
+        if player_a == player_b:
+            raise InvalidMoveError("The two cards must belong to different players!")
 
-    def look(self, own_slot, opp_index, opp_slot) -> tuple[Card, Card]:
-        own = self.players[self.current_turn].peek(own_slot)
-        opp = self.players[opp_index].peek(opp_slot)
+    def _swap(self, player_a, slot_a, player_b, slot_b) -> None:
+        self._check_distinct(player_a, player_b)
+        card_a = self.players[player_a].hand[slot_a]
+        card_b = self.players[player_b].hand[slot_b]
+        self.players[player_a].replace(slot_a, card_b)
+        self.players[player_b].replace(slot_b, card_a)
+
+    def look(self, player_a, slot_a, player_b, slot_b) -> tuple[Card, Card]:
+        self._check_distinct(player_a, player_b)
+        own = self.players[player_a].peek(slot_a)
+        opp = self.players[player_b].peek(slot_b)
         self.phase = Phase.AWAITING_SWAP_DECISION
-        self.pending_swap = (own_slot, opp_index, opp_slot)
+        self.pending_swap = (player_a, slot_a, player_b, slot_b)
         return own, opp
 
     def complete_swap(self) -> None:
         if self.phase == Phase.AWAITING_SWAP_DECISION:
-            own_slot, opp_index, opp_slot = self.pending_swap
-            self._swap(own_slot, opp_index, opp_slot)
+            player_a, slot_a, player_b, slot_b = self.pending_swap
+            self._swap(player_a, slot_a, player_b, slot_b)
             self.phase = Phase.AWAITING_TURN_END
             self.pending_swap = None
 

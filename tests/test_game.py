@@ -102,12 +102,12 @@ def test_peek_own():
     game.drawn_card = Card("7", Suit.CLUBS) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    assert(game.resolve_power(own_slot=1) == Card("A", Suit.SPADES))
+    assert(game.resolve_power(slot_a=1) == Card("A", Suit.SPADES))
     assert(game.phase == Phase.AWAITING_TURN_END)
     game.drawn_card = Card("8", Suit.CLUBS) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    assert(game.resolve_power(own_slot=0) == Card("K", Suit.HEARTS))
+    assert(game.resolve_power(slot_a=0) == Card("K", Suit.HEARTS))
     assert(game.phase == Phase.AWAITING_TURN_END)
 
 def test_peek_opp():
@@ -117,12 +117,12 @@ def test_peek_opp():
     game.drawn_card = Card("9", Suit.CLUBS) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    assert(game.resolve_power(opp_index=1, opp_slot=1) == Card("A", Suit.SPADES))
+    assert(game.resolve_power(player_b=1, slot_b=1) == Card("A", Suit.SPADES))
     assert(game.phase == Phase.AWAITING_TURN_END)
     game.drawn_card = Card("10", Suit.CLUBS) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    assert(game.resolve_power(opp_index=1, opp_slot=0) == Card("K", Suit.HEARTS))
+    assert(game.resolve_power(player_b=1, slot_b=0) == Card("K", Suit.HEARTS))
     assert(game.phase == Phase.AWAITING_TURN_END)
 
 
@@ -134,7 +134,7 @@ def test_J():
     game.drawn_card = Card("J", Suit.CLUBS) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    game.resolve_power(player_a=0, slot_a=1, player_b=1, slot_b=1)
     assert (players[0].hand[1] == Card("A", Suit.SPADES))
     assert (players[1].hand[1] == Card("10", Suit.SPADES))
     assert(game.phase == Phase.AWAITING_TURN_END)
@@ -148,7 +148,7 @@ def test_Q():
     game.drawn_card = Card("Q", Suit.CLUBS) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    own, opp = game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    own, opp = game.resolve_power(player_a=0, slot_a=1, player_b=1, slot_b=1)
     assert (own == Card("10", Suit.SPADES))
     assert (opp == Card("A", Suit.SPADES))
     assert (players[0].hand[1] == Card("A", Suit.SPADES))
@@ -163,7 +163,7 @@ def test_K():
     game.drawn_card = Card("K", Suit.CLUBS) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    own, opp = game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    own, opp = game.resolve_power(player_a=0, slot_a=1, player_b=1, slot_b=1)
     assert(game.phase == Phase.AWAITING_SWAP_DECISION)
     game.complete_swap()
     assert (own == Card("10", Suit.SPADES))
@@ -174,7 +174,7 @@ def test_K():
     game.drawn_card = Card("K", Suit.SPADES) 
     game.phase = Phase.AWAITING_DISCARD
     game.discard_drawn()
-    own, opp = game.resolve_power(own_slot=1, opp_index=1, opp_slot=1)
+    own, opp = game.resolve_power(player_a=0, slot_a=1, player_b=1, slot_b=1)
     assert(game.phase == Phase.AWAITING_SWAP_DECISION)
     game.decline_swap()
     assert (own == Card("A", Suit.SPADES))
@@ -182,6 +182,60 @@ def test_K():
     assert (players[0].hand[1] == Card("A", Suit.SPADES))
     assert (players[1].hand[1] == Card("10", Suit.SPADES))
     assert(game.phase == Phase.AWAITING_TURN_END)
+
+
+def test_J_swap_two_opponents():
+    # New capability: current player swaps two OTHER players' cards (neither is theirs)
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)  # current_turn = 0 (rishin)
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    players[2].hand = [Card("10", Suit.SPADES), Card("3", Suit.CLUBS)]
+    game.drawn_card = Card("J", Suit.CLUBS)
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    game.resolve_power(player_a=1, slot_a=1, player_b=2, slot_b=0)
+    assert players[1].hand[1] == Card("10", Suit.SPADES)
+    assert players[2].hand[0] == Card("A", Suit.SPADES)
+    assert game.phase == Phase.AWAITING_TURN_END
+
+
+def test_Q_swap_two_opponents():
+    # Catches the FORCED_SWAP peek bug: revealed cards must be the ACTUAL targets, not the current player's
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)  # current_turn = 0
+    players[0].hand = [Card("2", Suit.CLUBS), Card("3", Suit.CLUBS)]   # rishin's cards must NOT be revealed
+    players[1].hand = [Card("K", Suit.HEARTS), Card("A", Suit.SPADES)]
+    players[2].hand = [Card("10", Suit.SPADES), Card("5", Suit.HEARTS)]
+    game.drawn_card = Card("Q", Suit.CLUBS)
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    card_a, card_b = game.resolve_power(player_a=1, slot_a=1, player_b=2, slot_b=0)
+    assert card_a == Card("A", Suit.SPADES)      # roshna's card — NOT rishin's
+    assert card_b == Card("10", Suit.SPADES)     # dona's card
+    assert players[1].hand[1] == Card("10", Suit.SPADES)
+    assert players[2].hand[0] == Card("A", Suit.SPADES)
+    assert game.phase == Phase.AWAITING_TURN_END
+
+
+def test_swap_same_player_rejected():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    game.drawn_card = Card("J", Suit.CLUBS)
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    with pytest.raises(InvalidMoveError):
+        game.resolve_power(player_a=1, slot_a=0, player_b=1, slot_b=1)  # two cards, same player
+
+
+def test_K_same_player_rejected_before_reveal():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    game.drawn_card = Card("K", Suit.CLUBS)
+    game.phase = Phase.AWAITING_DISCARD
+    game.discard_drawn()
+    with pytest.raises(InvalidMoveError):
+        game.resolve_power(player_a=2, slot_a=0, player_b=2, slot_b=1)  # same player
+    assert game.pending_swap is None   # look() bailed BEFORE committing a swap → no info leaked
 
 
 def test_skip():

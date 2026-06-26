@@ -44,6 +44,13 @@ class Card:
         "7" : Power.PEEK_OWN_CARD,
 
             }
+
+    symbol_table = {
+            Suit.SPADES: "♠",
+            Suit.CLUBS: "♣",
+            Suit.DIAMONDS: "♦",
+            Suit.HEARTS: "♥",
+            }
     
     # if special use point table else str to int conversion
 
@@ -68,6 +75,9 @@ class Card:
 
         else:
             return Power.NONE
+
+    def __repr__(self) -> str:
+        return f"{self.rank}{self.symbol_table[self.suit]}"
 
 
 
