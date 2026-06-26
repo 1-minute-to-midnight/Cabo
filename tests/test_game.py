@@ -363,3 +363,20 @@ def test_winner_loser():
         game.call_cabo()
 
 
+# Reshuffle Tests
+def test_reshuffle():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players, discard_pile=[Card("K", Suit.HEARTS), Card("A", Suit.SPADES)])
+    game.deck.cards = [] 
+    game.draw_from_deck()
+    assert(game.phase == Phase.AWAITING_DISCARD)
+    assert(game.discard_top == Card("A", Suit.SPADES))
+    assert(game.drawn_card == Card("K", Suit.HEARTS))
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players, discard_pile=[Card("K", Suit.HEARTS), Card("A", Suit.SPADES), Card("K", Suit.SPADES), Card("10", Suit.HEARTS)])
+    game.deck.cards = [] 
+    game.draw_from_deck()
+    assert(len(game.discard_pile) == 1)
+
+
+

@@ -51,9 +51,18 @@ class Game:
         else:
             return None
 
+    def _reshuffle_discard_into_deck(self) -> None:
+        to_be_shuffled = self.discard_pile[:-1] 
+        self.deck.cards = to_be_shuffled
+        self.deck.shuffle()
+        self.discard_pile = [self.discard_pile[-1]]
+
+
 
     def draw_from_deck(self) -> None:
         if self.phase == Phase.AWAITING_DRAW:
+            if len(self.deck) == 0:
+                self._reshuffle_discard_into_deck()
             self.drawn_card = self.deck.draw()
             self.from_discard = False
             self.phase = Phase.AWAITING_DISCARD

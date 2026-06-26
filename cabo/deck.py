@@ -17,10 +17,7 @@ class Deck:
 
 
     def draw(self) -> Card:
-        if not self.cards:
-            return reshuffle() # take all cards from draw pile except top card and shuffle into deck.
-        else:
-            return self.cards.pop()
+        return self.cards.pop()
 
     def shuffle(self) -> None:
         random.shuffle(self.cards)
