@@ -96,6 +96,7 @@ def gather_power_inputs(game, power) -> dict:
     current_player = game.players[game.current_turn]
     match power:
         case Power.PEEK_OWN_CARD:
+            player_a = game.current_turn
             slot = choicer([i for i in range(len(game.players[player_a].hand))], "Pick a card slot to peek: ")
             return{"slot_a": slot}
 
@@ -182,6 +183,7 @@ def play(game):
     print_result(game)   # winner + everyone's hands
 
 
-players = [Player("rishin"), Player("roshna"), Player("dona")]
-game = Game(players=players)
-play(game)
+if __name__ == "__main__":
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    play(game)
