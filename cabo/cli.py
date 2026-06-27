@@ -1,7 +1,7 @@
 from cabo.game import Game, InvalidMoveError, Phase
 from cabo.player import Player
 from cabo.card import Card, Power, Suit 
-
+from cabo.bot import Bot
 
 
 
@@ -170,8 +170,15 @@ def print_result(game):
     print(f"Winner is {game.winner_loser()}" if game.winner_loser() is not None else "Nobody wins!")
 
 def play(game):
+    
     while game.phase != Phase.ROUND_OVER:
         render(game)
+        current_player = game.players[game.current_turn]
+
+        if isinstance(current_player, Bot):
+            current_player.make_decision(game)
+            continue
+
         match game.phase:
             case Phase.AWAITING_DRAW:          handle_awaiting_draw(game)
             case Phase.AWAITING_DISCARD:       handle_awaiting_discard(game)
@@ -184,6 +191,6 @@ def play(game):
 
 
 if __name__ == "__main__":
-    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    players = [Player("rishin"), Player("roshna"), Bot("dona")]
     game = Game(players=players)
     play(game)
