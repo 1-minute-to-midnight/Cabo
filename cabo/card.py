@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import ClassVar
 
 
 
@@ -13,10 +14,10 @@ class Power(Enum):
 
 
 class Suit(Enum):
-    HEARTS = auto()
-    DIAMONDS = auto()
-    CLUBS = auto()
-    SPADES = auto()
+    HEARTS = "HEARTS"
+    DIAMONDS = "DIAMONDS"
+    CLUBS = "CLUBS"
+    SPADES = "SPADES"
 
 
 @dataclass(frozen = True) # frozen = True so card can't be mutated after creation
@@ -24,7 +25,7 @@ class Card:
     rank: str
     suit: Suit
 
-    RANKS: tuple[str, ...] = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
+    RANKS: ClassVar[tuple[str, ...]] = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 
 
     point_table = {
