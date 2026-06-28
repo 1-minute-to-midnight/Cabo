@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
-from cabo.server import app
+from cabo.game import Game
+from cabo.server import app, games
+from cabo.player import Player
 
 
 client = TestClient(app)
@@ -21,3 +23,14 @@ def test_some_moves():
     assert client.post(f"/games/{code}/keep/0").status_code == 200
     assert client.post(f"/games/{code}/call-cabo").status_code == 200
     assert client.post(f"/games/{code}/end-turn").status_code == 200
+
+
+def test_websocket_action_broadcast():
+    code = client.post("/games", json={"players": ["a", "b"]}).json()["game_code"]    
+    with client.websocket_connect(f"/ws/{code}") as a, client.websocket_connect(f"/ws/{code}") as b:
+        a.send_json({"type": "draw_from_deck"})
+        assert b.receive_json()["drawn_card"]
+
+    del games[f"{code}"]
+
+
