@@ -189,7 +189,7 @@ async def websocket_endpoint(code: str, player: str, websocket: WebSocket):
             game = games[code]
             try:
                 peeked  = []
-                if player != game.players[game.current_turn].name:
+                if action_type!= "snap" and player != game.players[game.current_turn].name:
                     await websocket.send_json({"status": "error", "message": "Not your turn!"})
                     continue
                 match action_type:
@@ -207,6 +207,9 @@ async def websocket_endpoint(code: str, player: str, websocket: WebSocket):
                     case "skip": game.skip()
                     case "call_cabo": game.call_cabo()
                     case "end_turn": game.end_turn()
+                    case "snap":
+                        snapper_index = next(i for i, p in enumerate(game.players) if p.name == player)
+                        game.snap(snapper_index, data.get("target_player"), data.get("target_slot"))
                 if peeked:
                     serialized_cards = [CardResponse.model_validate(card) for card in peeked]
                     await websocket.send_json({"peek": jsonable_encoder(serialized_cards)})

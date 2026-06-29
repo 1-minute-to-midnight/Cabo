@@ -36,6 +36,7 @@ class Game:
     phase: Phase = Phase.AWAITING_DRAW 
     cabo_caller: Optional[Player] = None
     pending_swap: Optional[tuple[int, int, int, int]] = None
+    pile_matched: bool = False
 
 
     def __post_init__(self):
@@ -57,13 +58,16 @@ class Game:
         self.deck.shuffle()
         self.discard_pile = [self.discard_pile[-1]]
 
+    def _draw_one(self) -> Card:
+        if len(self.deck) == 0:
+                self._reshuffle_discard_into_deck()
+        return self.deck.draw()
+
 
 
     def draw_from_deck(self) -> None:
         if self.phase == Phase.AWAITING_DRAW:
-            if len(self.deck) == 0:
-                self._reshuffle_discard_into_deck()
-            self.drawn_card = self.deck.draw()
+            self.drawn_card = self._draw_one()  
             self.from_discard = False
             self.phase = Phase.AWAITING_DISCARD
         else:
@@ -91,6 +95,7 @@ class Game:
 
         self.drawn_card = None
         self.from_discard = False
+        self.pile_matched = False
 
 
     def discard_drawn(self) -> None:
@@ -108,6 +113,7 @@ class Game:
 
         self.drawn_card = None
         self.from_discard = False
+        self.pile_matched = False
 
 
     def end_turn(self) -> None:
@@ -212,7 +218,7 @@ class Game:
             raise InvalidMoveError("Cannot do that now!")
         return {p.name: PlayerResult(p.total_score(), p.hand) for p in self.players}
 
-    def winner_loser(self):
+    def winner_loser(self) -> str | None:
         if self.phase != Phase.ROUND_OVER:
             raise InvalidMoveError("Cannot do that now!")
         caller = self.cabo_caller.name
@@ -222,6 +228,35 @@ class Game:
             return caller
         else:
             return None
+
+
+    def snap(self, snapper: int, target_player: int, target_slot: int) -> None:
+        if not self.discard_top:
+            raise InvalidMoveError("Nothing to Match")
+
+        target_card = self.players[target_player].hand[target_slot]
+
+        if self.pile_matched:
+            self.discard_pile.append(target_card)
+            self.players[target_player].hand.pop(target_slot)
+            self.players[snapper].hand.extend([self._draw_one(), self._draw_one()])
+            return 
+
+        if  target_card.rank == self.discard_top.rank:
+            self.discard_pile.append(target_card)
+            self.players[target_player].hand.pop(target_slot)
+            self.pile_matched = True
+            if target_player != snapper:
+                self.players[target_player].hand.extend([self._draw_one(), self._draw_one()])
+        else:
+            self.discard_pile.append(target_card)
+            self.players[target_player].hand.pop(target_slot)
+            self.pile_matched = False
+            self.players[snapper].hand.extend([self._draw_one(), self._draw_one()])
+
+
+
+
         
 
         

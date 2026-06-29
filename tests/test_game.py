@@ -379,4 +379,36 @@ def test_reshuffle():
     assert(len(game.discard_pile) == 1)
 
 
+# Snap Tests
+def test_own_snap():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[2].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES), Card("Q", Suit.SPADES), Card("J", Suit.SPADES)]
+    players[1].hand = [Card("3", Suit.SPADES), Card("A", Suit.SPADES), Card("10", Suit.HEARTS)]
+    players[0].hand = [Card("3", Suit.HEARTS), Card("2", Suit.SPADES)]
+    game.discard_pile.append(Card("10", Suit.CLUBS))
+    game.snap(2, 2, 1)
+    assert(len(game.players[2].hand) == 3)
+    assert(game.discard_top == Card("10", Suit.SPADES))
+    game.snap(1, 1, 2) # Pile lock test
+    assert(len(game.players[1].hand) == 4)
+    assert(game.discard_top == Card("10", Suit.HEARTS))
+
+
+
+def test_opp_snap():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[2].hand = [Card("K", Suit.SPADES), Card("10", Suit.SPADES), Card("Q", Suit.SPADES), Card("J", Suit.SPADES)]
+    players[1].hand = [Card("3", Suit.SPADES), Card("A", Suit.SPADES), Card("10", Suit.HEARTS)]
+    players[0].hand = [Card("3", Suit.HEARTS), Card("2", Suit.SPADES)]
+    game.discard_pile.append(Card("10", Suit.CLUBS))
+    game.snap(1, 2, 1)
+    assert(len(game.players[2].hand) == 5)
+    assert(game.discard_top == Card("10", Suit.SPADES))
+    game.pile_matched = False
+    game.snap(1, 2, 1) 
+    assert(len(game.players[1].hand) == 5)
+    assert(game.discard_top == Card("Q", Suit.SPADES))
+
 
