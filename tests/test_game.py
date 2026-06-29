@@ -412,3 +412,18 @@ def test_opp_snap():
     assert(game.discard_top == Card("Q", Suit.SPADES))
 
 
+# Red king exemption
+def test_red_k_exemption():
+    players = [Player("rishin"), Player("roshna"), Player("dona")]
+    game = Game(players=players)
+    players[2].hand = [Card("K", Suit.HEARTS), Card("10", Suit.SPADES), Card("Q", Suit.SPADES), Card("J", Suit.SPADES)]
+    players[1].hand = [Card("3", Suit.SPADES), Card("A", Suit.SPADES), Card("10", Suit.HEARTS)]
+    players[0].hand = [Card("3", Suit.HEARTS), Card("2", Suit.SPADES)]
+    game.discard_pile.append(Card("10", Suit.CLUBS))
+    game.snap(1, 2, 0)
+    assert(len(game.players[2].hand) == 4)
+    assert(game.players[2].hand[0] == Card("K", Suit.HEARTS))
+    assert(game.discard_top == Card("10", Suit.CLUBS))
+    assert(len(game.players[1].hand) == 5)
+
+

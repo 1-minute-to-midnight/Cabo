@@ -249,8 +249,9 @@ class Game:
             if target_player != snapper:
                 self.players[target_player].hand.extend([self._draw_one(), self._draw_one()])
         else:
-            self.discard_pile.append(target_card)
-            self.players[target_player].hand.pop(target_slot)
+            if target_card.value() != -1:
+                self.discard_pile.append(target_card)
+                self.players[target_player].hand.pop(target_slot)
             self.pile_matched = False
             self.players[snapper].hand.extend([self._draw_one(), self._draw_one()])
 
